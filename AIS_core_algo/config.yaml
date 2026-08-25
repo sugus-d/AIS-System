@@ -1,0 +1,122 @@
+# 示例受检者列表（ID 已匿名化）。本地运行时替换为真实受检者编号与 mesh 路径。
+subjects:
+  - id: "S0016"
+    mesh_path: "data/mesh/S0016/STD_fuse_mesh_20250724.ply"
+  - id: "S0089"
+    mesh_path: "data/mesh/S0089/STD_fuse_mesh_20250611.ply"
+  - id: "S0069"
+    mesh_path: "data/mesh/S0069/STD_fuse_mesh_20250619.ply"
+  - id: "S0006"
+    mesh_path: "data/mesh/S0006/STD_fuse_mesh_20250619.ply"
+  - id: "S0107"
+    mesh_path: "data/mesh/S0107/STD_fuse_mesh_20250716.ply"
+
+# ── 预测模型注册表（部署配置）───────────────────────────────────────────
+# CLI/API 的 --model/model 字段按版本名选择模型包路径；训练产出新模型包后在此登记即可，
+# 无需改预测代码。加载/缓存/校验由 modeling.model_package 共享加载器统一处理。
+models:
+  default: "v1.0.0"
+  registry:
+    v1.0.0: "prediction/models/v1.0.0.joblib"
+    v0.1.0: "prediction/models/v0.1.0.joblib"
+  aliases:
+    production: "v1.0.0"
+    beta: "v0.1.0"
+
+preprocess:
+  # ── BFS 区域生长 ──────────────────────────────────────────────────────
+  bfs:
+    # BFS 生长停止阈值：相邻三角面法线夹角超过此值（度），则不过该边。
+    # 越大越能跨越尖锐折痕（如 50° 可以跨过手臂-躯干交界），
+    # 越小越严格（如 30° 只生长在非常平滑的区域）。
+    angle_threshold_deg: 50.0
+
+    # 种子选择曲率阈值：|平均曲率| 低于此值的三角面才作为"平坦候选区"。
+    # 仅用于选种子点，不约束 BFS 生长。
+    # 典型背部曲率 0.005~0.02，接缝/突起 >0.05。
+    curvature_threshold: 0.03
+
+    # 粗糙度停止阈值（弧度）：三角面邻域法线散布超过此值则 BFS 停止生长。
+    # 用于区分平滑背部（低粗糙度）和衣物/织物（高粗糙度）。
+    # plot.py --domain roughness 用的是自适应阈值（q25 + 0.5×IQR），
+    # 这里设固定值保证 pipeline 可复现。调大 → 更多区域被保留。
+    roughness_threshold: 0.25
+
+    # 是否在 BFS 后启用孔洞填充（内部空洞由边界长度+面积判定）
+    fill_holes: true
+
+    # 孔洞外边界最大长度（mm）：孔洞与 kept 共享的边的总长度不超过此值才填充。
+    # 太大了会填充到背景凹陷（非真实孔洞）。
+    max_hole_boundary: 100.0
+
+    # 孔洞最大面积（mm²）：孔洞总面积不超过此值才填充。
+    # 面积检查在边界长度之前（O(n) C 级 vs Python 循环），
+    # 大孔洞先被过滤掉，避免无效的边界遍历。
+    max_hole_area: 3000.0
+
+  # ── 突起切除（法线角检测水平悬挂物） ──────────────────────────────
+  protrusion_cut:
+    # 法线水平判定阈值（度）：顶点法线与XY平面的夹角低于此值 → 水平面 → 切除。
+    # 对应 cut_peninsulas 的 angle_threshold。15° 只切近似水平，
+    # 25° 会切更多倾斜面。None 表示跳过此步骤。
+    angle_deg: 25
+
+    # 桥面扩张层数：标记为"水平"的三角面沿邻接关系扩张的层数。
+    # 0=只切直接水平的面，1/2/3=扩张切除范围切断细茎连接。
+    dilation: 0
+
+    # 有效切线段最低面积（mm²）：切除后分析每个切除连通分量，
+    # 面积低于此值的分量视为误切，自动回填。
+    min_area: 30.0
+
+    # 面积/边界长度比：低于此值的切线段视为细长条，自动回填。
+    # 细长条通常是被误切的过渡区域而非真正的突起。
+    min_al_ratio: 5
+
+    # 无效切线段回填扩张层数：从回填区域边界向外扩张多少层，
+    # 让回填边界更平滑，避免锯齿。
+    dilate_back: 3
+
+moire:
+  num_levels: 100
+  plane_a: 0
+  plane_b: 0
+  plane_c: 1
+  plane_d: 20
+
+curvature:
+  clip_range_mean: [-0.015, 0.025]
+  clip_range_gauss: [-0.00025, 0.00025]
+
+geometry:
+  seg_shoulder_thresh: 0.78
+  seg_lumbar_thresh: 0.42
+  seg_pelvic_thresh: 0.18
+
+indices:
+  segment_weights: [0.25, 0.25, 0.25, 0.25]
+  lambda_m: 1.0
+  lambda_g: 1.0
+
+region_indices:
+  active_regions: [2, 0, 1]
+  region_weights: [0.0, 0.0385, 0.9615]
+  quantity_weights: [0.0154, 0.0667, 0.9179]
+
+features:
+  feature_columns:
+    - ai_global
+    - ai_shoulder
+    - ai_thoracic
+    - ai_lumbar
+    - ai_pelvic
+    - z_global
+    - z_shoulder
+    - z_thoracic
+    - z_lumbar
+    - z_pelvic
+    - moire_number
+
+ml:
+  model_type: lightgbm
+  test_split: 0.2

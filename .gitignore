@@ -1,0 +1,56 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+annotation-platform/frontend/node_modules
+annotation-platform/frontend/dist
+annotation-platform/.venv
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.config/
+.env
+.env.local
+.env.*.local
+.ais-runtime/
+AIS_core_algo/data/
+AIS_core_algo/results/
+AIS_core_algo/prediction/outputs/
+data/
+release/
+runtime/python/
+deployment/initial-admin.json
+
+# Python virtualenvs
+.venv/
+__pycache__/
+*.pyc
+
+# Local staging & build intermediates
+.release/
+.builder/
+.verify-local-db/
+
+# Generated annotation results
+annotation-platform/results/
+
+# Synology NAS metadata
+@eaDir/

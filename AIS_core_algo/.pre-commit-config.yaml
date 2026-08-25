@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff
+        args: [--fix, --select, I]
+      - id: ruff-format
+  # Conventional Commits 校验
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: []
+  # 禁止直接从 loguru 导入 logger（必须走 utils.logger 薄封装）
+  - repo: local
+    hooks:
+      - id: forbid-loguru-import
+        name: 禁止 from loguru import
+        entry: >
+          bash -c '
+          grep -rn "from loguru import\|import loguru"
+            --include="*.py" --exclude-dir=".venv" --exclude-dir="__pycache__" .
+            | grep -v "utils/logger.py"
+            && echo "ERROR: loguru import forbidden, use utils.logger"
+            && exit 1 || exit 0
+          '
+        language: system
+        files: '\.py$'
+        exclude: '^\.venv/|^__pycache__/|^tests/'

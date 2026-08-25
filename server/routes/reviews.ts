@@ -1,0 +1,10 @@
+import { Router } from "express";
+import { db, audit } from "../services/database";
+import { requireRoles } from "../middleware/access";
+
+const router = Router();
+router.get("/", requireRoles("system_admin", "institution_admin"), async (_req, res) => { const list = await db.reportReview.findMany({ where: { status: { in: ["under_review", "review_returned"] } }, orderBy: { createdAt: "desc" } }); res.json({ success: true, data: { list: list.map((review) => ({ reportId: review.reportId, status: review.status, submittedAt: review.createdAt, comment: review.comment })), total: list.length } }); });
+async function change(req: any, res: any, action: "approved" | "returned") { const report = await db.report.findUnique({ where: { id: req.params.reportId } }); if (!report) return res.status(404).json({ success: false, message: "Report not found." }); const old = await db.reportReview.findUnique({ where: { reportId: report.id } }); const history = old ? JSON.parse(old.historyJson) : []; history.push({ action, by: req.user.username, at: new Date().toISOString(), comment: req.body?.comment || "" }); const status = action === "approved" ? "approved" : "review_returned"; const review = await db.reportReview.upsert({ where: { reportId: report.id }, create: { reportId: report.id, status, comment: req.body?.comment, historyJson: JSON.stringify(history), reviewedById: req.user.id, reviewedAt: new Date() }, update: { status, comment: req.body?.comment, historyJson: JSON.stringify(history), reviewedById: req.user.id, reviewedAt: new Date() } }); await db.report.update({ where: { id: report.id }, data: { annotationStatus: status } }); await audit(req.user.id, action, "Report", report.id, { comment: req.body?.comment }); return res.json({ success: true, data: { ...review, history }, message: action }); }
+router.post("/:reportId/approve", requireRoles("system_admin", "institution_admin"), (req, res) => change(req, res, "approved"));
+router.post("/:reportId/return", requireRoles("system_admin", "institution_admin"), (req, res) => change(req, res, "returned"));
+export default router;

@@ -1,0 +1,40 @@
+appId: edu.cuhk.ais.local
+productName: AIS
+directories:
+  app: .release/app
+  output: release
+files:
+  - "**/*"
+extraResources:
+  - from: .release/algorithm-runtime
+    to: algorithm-runtime
+  - from: .release/annotation-runtime
+    to: annotation-runtime
+  - from: .release/migrations
+    to: migrations
+  - from: .release/deployment
+    to: deployment
+  - from: .release/manifest.json
+    to: manifest.json
+asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/**
+  - node_modules/@prisma/**
+  - node_modules/@prisma/adapter-better-sqlite3/**
+compression: maximum
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: AIS-${version}-Setup.exe
+  signAndEditExecutable: true
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: false
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AIS

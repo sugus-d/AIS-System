@@ -1,0 +1,130 @@
+[project]
+name = "ais-back-scan"
+version = "0.1.0"
+description = "AIS back scan analysis pipeline — mesh processing, Moiré imaging, landmark detection"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy<2",
+    "scipy<1.14",
+    "open3d>=0.19",
+    "matplotlib",
+    "scikit-learn",
+    "scikit-image",
+    "pandas",
+    "lightgbm",
+    "pyvista",
+    "loguru",
+    "pyyaml",
+    "gpytoolbox",
+    "pygeodesic",
+    "fastapi>=0.138.0",
+    "uvicorn[standard]>=0.49.0",
+    "trimesh>=4.12.2",
+    "torch>=2.12.1",
+    "playwright>=1.60.0",
+    "shapely>=2.1.2",
+    "rtree>=1.4.1",
+    "pyee>=13.0.1",
+    "typer>=0.26.8",
+    "alphashape>=1.3.1",
+    "shap>=0.49.1",
+    "openpyxl>=3.1.5",
+    "streamlit>=1.60.0",
+    "python-docx>=1.2.0",
+]
+
+[tool.ruff]
+# 与 .claude/rules/python-standards.md 规范对齐
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "F",      # Pyflakes (未定义变量、未使用 import 等)
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "I",      # isort (import 排序)
+    "N",      # pep8-naming (命名规范)
+    "UP",     # pyupgrade (现代语法)
+    "B",      # flake8-bugbear (常见 bug)
+    "A",      # flake8-builtins (变量名不遮盖 builtins)
+    "T20",    # flake8-print (禁止裸 print)
+    "SIM",    # flake8-simplify (代码简化)
+    "ANN",    # flake8-annotations (类型注解 — 编码规范强制要求)
+    "ARG",    # flake8-unused-arguments (未使用的函数参数)
+    "ERA",    # eradicate (注释掉的死代码)
+    "SLF",    # flake8-self (私有成员访问)
+    "PLR2004",# pylint 魔法常量比较
+    "PLW0120",# pylint for-else 无 break
+    "PT",     # flake8-pytest-style (pytest 规范)
+]
+ignore = [
+    "E501",   # 行长度交给 formatter
+    "N806",   # 允许 UPPER_CASE 变量
+    "N803",   # 允许 self/cls 参数名
+    "ANN001", # 允许无注解的位置参数（self/cls/构造函数 self 等）
+    "ANN204", # 允许 __init__/__new__ 缺少 return 注解
+    "ARG001", # 允许未使用的函数参数（基类接口/回调签名限制）
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    "*.ipynb",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试文件不需要生产级别的类型注解和参数约束
+"tests/**/*.py" = [
+    "ANN201", # 允许测试函数缺少 return 类型注解
+    "S101",   # 允许 assert（测试本质）
+    "PLR2004",# 允许测试中的 magic number 断言
+    "SLF001", # 允许测试访问私有成员
+    "PT011",  # 允许测试中宽泛的异常断言
+]
+# 脚本入口文件（commands/、run_pipeline.py）允许 print 作为 CLI 输出
+"commands/**/*.py" = [
+    "T201",
+]
+"run_pipeline.py" = [
+    "T201",
+]
+# 报告/验证脚本用 print 作为输出方式
+"landmarks/gt_validate.py" = [
+    "T201",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["landmarks", "visualization", "utils", "mesh", "moire", "commands"]
+order-by-type = false
+
+[tool.ruff.lint.flake8-annotations]
+suppress-none-returning = true
+suppress-dummy-args = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [".git", "__pycache__", ".mypy_cache", ".ruff_cache"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# tests/legacy/ 为旧版 pipeline 测试，默认不收集，按需运行：pytest tests/legacy/
+addopts = ""
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.20",
+]

@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../server/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  role         String
+  department   String?
+  institutionId String?
+  institution Institution? @relation(fields: [institutionId], references: [id])
+  email        String?
+  phone        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  cases        Case[]   @relation("CaseOwner")
+  tasks        AnalysisTask[] @relation("TaskSubmitter")
+  auditLogs    AuditLog[]
+}
+
+model Case {
+  id             String   @id @default(cuid())
+  caseNumber     String   @unique
+  name           String
+  gender         String
+  birthDate      DateTime?
+  heightCm       Float
+  weightKg       Float
+  medicalHistory String?
+  department     String?
+  institutionId  String?
+  institution    Institution? @relation(fields: [institutionId], references: [id])
+  doctor         String?
+  status         String   @default("pending_upload")
+  ownerId        String
+  owner          User     @relation("CaseOwner", fields: [ownerId], references: [id])
+  files          ScanFile[]
+  reports        Report[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Institution {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  cases     Case[]
+}
+
+model ScanFile {
+  id           String   @id @default(cuid())
+  caseId       String
+  case         Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  originalName String
+  storedPath   String
+  sha256       String
+  sizeBytes    Int
+  scanTime     DateTime?
+  status       String   @default("pending_analysis")
+  createdAt    DateTime @default(now())
+  tasks        AnalysisTask[]
+  reports      Report[]
+}
+
+model AnalysisTask {
+  id            String   @id @default(cuid())
+  type          String
+  status        String   @default("pending")
+  progress      Int      @default(0)
+  caseId        String
+  fileId        String
+  file          ScanFile @relation(fields: [fileId], references: [id])
+  submittedById String
+  submittedBy   User     @relation("TaskSubmitter", fields: [submittedById], references: [id])
+  errorMessage  String?
+  resultJson    String?
+  createdAt     DateTime @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  reports       Report[]
+}
+
+model Report {
+  id                String   @id @default(cuid())
+  caseId            String
+  case              Case     @relation(fields: [caseId], references: [id])
+  fileId            String
+  file              ScanFile @relation(fields: [fileId], references: [id])
+  taskId            String?
+  task              AnalysisTask? @relation(fields: [taskId], references: [id])
+  version           Int
+  cobbAngle         Float
+  severity          String
+  modelId           String
+  resultJson        String
+  artifactDirectory String
+  annotationStatus  String   @default("not_started")
+  createdAt         DateTime @default(now())
+  review            ReportReview?
+  annotationSessions AnnotationSession[]
+  @@unique([caseId, version])
+}
+
+model ReportReview {
+  id          String   @id @default(cuid())
+  reportId    String   @unique
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  status      String   @default("under_review")
+  comment     String?
+  historyJson String   @default("[]")
+  reviewedById String?
+  reviewedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AnnotationSession {
+  id          String   @id @default(cuid())
+  reportId    String
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  subjectId   String
+  tokenHash   String
+  status      String   @default("active")
+  expiresAt   DateTime
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AppSetting {
+  key       String @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  payload   String?
+  createdAt DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  title     String
+  content   String
+  contact   String?
+  createdAt DateTime @default(now())
+}

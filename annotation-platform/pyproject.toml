@@ -1,0 +1,19 @@
+[project]
+name = "ais-annotation-platform"
+version = "0.1.0"
+description = "AIS 标注平台 — 3D mesh landmark + ROI 人工标注（FastAPI + React）"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "open3d",
+    "trimesh",
+    "scipy",
+    "numpy",
+    "matplotlib",
+    "pyvista",
+    "rich",
+]
+
+[tool.uv]
+package = false

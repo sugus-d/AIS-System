@@ -1,0 +1,104 @@
+Thumbs.db
+.DS_Store
+.idea
+.pytest_cache
+.venv
+.env
+.stignore
+.python-version
+syncthing*
+cpu0
+.codebase-memory
+
+ecc-learning-report.html
+
+node_modules/
+
+__pycache__/
+*.brush-backup
+
+# Data & runtime
+/data/
+/logs/
+archive/
+/results/
+/results/audit/
+/prediction/outputs/
+tests/__pycache__/
+docs/*.pdf
+docs/*.pptx
+docs/export-guide/*.pdf
+
+# 本地 AI agent 配置/知识（完全排除，不推送远程）
+.claude/
+
+.omc/
+.github/todo
+
+# Worktrees (created at runtime, not versioned)
+.claude/worktrees/
+.claude/.reports/
+
+# Agent runtime files (auto-modified by agents at runtime, not versioned)
+.claude/agents/*/progress/
+.claude/agents/*/lessons.md
+.claude/reports/
+.claude/specs/
+.claude/governance/
+.claude/.read-files.json
+# State files (runtime, should not be versioned)
+.claude/state/
+.claude/goals/
+.claude/sessions/
+.claude/metrics/
+.claude/observations/
+.claude/insights/
+.claude/reports/
+.claude/debug/
+.claude/compact-state.json
+.claude/accumulator.json
+
+
+scheduled_tasks.lock
+health.json
+
+.superpowers
+
+# Duplicate workspace (created by agents, not versioned)
+AIS/
+
+# Generated / cache
+test-results/
+.ruff_cache/
+.mypy_cache/
+
+# Golden 测试运行时产物（每次运行生成新时间戳目录，非基准数据）
+tests/data/numerics/features/results/modeling/prediction/archived/*/
+tests/data/numerics/features/results/modeling/prediction/morph_region_ci_40d/*/
+
+# Editor
+.vscode/
+.workflow/
+docs/superpowers/
+.claude/docs/python.md
+
+# Temp / backup
+.tmp/
+*.bak
+mesh/roi_old/
+
+# CatBoost generated artifacts
+catboost_info/
+
+# Notebooks (generated)
+experiments/
+
+# 标注平台已独立为 annotation-platform 仓库（不在核心仓库维护）
+
+# 论文稿件（不提交）
+docs/AI-related project/
+.mindfs/
+
+# 真实扫描 mesh（敏感数据，不随仓库分发；本地测试需手动放置）
+tests/data/numerics/mesh/
+*.egg-info/

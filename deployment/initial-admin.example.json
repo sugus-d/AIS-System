@@ -1,0 +1,6 @@
+{
+  "username": "local_admin",
+  "password": "ChangeThisBeforeDeployment!",
+  "displayName": "本地系统管理员",
+  "department": "AIS 筛查中心"
+}
