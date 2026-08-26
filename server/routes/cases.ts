@@ -1,15 +1,17 @@
+import { unlink } from "node:fs/promises";
 import { Router } from "express";
 import { db, audit } from "../services/database";
 import { canAccessCase, requireRoles } from "../middleware/access";
 
 const router = Router();
-const present = (item: any) => ({ ...item, height: item.heightCm, weight: item.weightKg, fileCount: item._count?.files ?? 0, reportCount: item._count?.reports ?? 0 });
+const present = (item: any) => ({ ...item, height: item.heightCm, weight: item.weightKg, fileCount: item._count?.files ?? 0, reportCount: item._count?.reports ?? 0, latestReportTime: item.reports?.[0]?.createdAt ?? null });
 const institutionFor = (user: any, body: any) => user.role === "system_admin" && typeof body?.institutionId === "string" ? body.institutionId : user.institutionId;
 
 router.get("/", async (req: any, res) => {
   const page = Math.max(1, Number(req.query.page || 1)); const pageSize = Math.min(Math.max(1, Number(req.query.pageSize || 20)), 100);
   const where: any = req.query.keyword ? { OR: [{ caseNumber: { contains: String(req.query.keyword) } }, { name: { contains: String(req.query.keyword) } }] } : {};
-  const rows = await db.case.findMany({ where, include: { _count: { select: { files: true, reports: true } } }, orderBy: { updatedAt: "desc" } });
+  if (typeof req.query.status === "string" && req.query.status && req.query.status !== "all") where.status = req.query.status;
+  const rows = await db.case.findMany({ where, include: { _count: { select: { files: true, reports: true } }, reports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 } }, orderBy: { updatedAt: "desc" } });
   const list = rows.filter((item) => canAccessCase(req.user, item));
   res.json({ success: true, data: { list: list.slice((page - 1) * pageSize, page * pageSize).map(present), total: list.length, page, pageSize } });
 });
@@ -19,12 +21,22 @@ router.get("/:id", async (req: any, res) => { const item = await db.case.findUni
 async function createCase(user: any, body: any) {
   const institutionId = institutionFor(user, body); if (!institutionId) throw new Error("User institution is not configured.");
   if (!body?.name || !body?.gender || !body?.birthDate || !body?.height || !body?.weight) throw new Error("姓名、性别、出生日期、身高和体重为必填项。");
-  const count = await db.case.count();
-  return db.case.create({ data: { caseNumber: `CASE${String(count + 1).padStart(6, "0")}`, name: body.name, gender: body.gender, birthDate: new Date(body.birthDate), heightCm: Number(body.height), weightKg: Number(body.weight), medicalHistory: body.medicalHistory, idNumber: body.idNumber, phone: body.phone, department: body.department, doctor: body.doctor, ownerId: user.id, institutionId } });
+  const existingNumbers = await db.case.findMany({ select: { caseNumber: true } });
+  let maxNumber = 0;
+  for (const row of existingNumbers) { const match = /^CASE(\d+)$/.exec(row.caseNumber); if (match) maxNumber = Math.max(maxNumber, Number(match[1])); }
+  return db.case.create({ data: { caseNumber: `CASE${String(maxNumber + 1).padStart(6, "0")}`, name: body.name, gender: body.gender, birthDate: new Date(body.birthDate), heightCm: Number(body.height), weightKg: Number(body.weight), medicalHistory: body.medicalHistory, idNumber: body.idNumber, phone: body.phone, department: body.department, doctor: body.doctor, ownerId: user.id, institutionId } });
 }
 router.post("/", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { try { const item = await createCase(req.user, req.body); await audit(req.user.id, "create", "Case", item.id); res.status(201).json({ success: true, data: present(item) }); } catch (error) { res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Cannot create case." }); } });
 router.put("/:id", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { const existing = await db.case.findUnique({ where: { id: req.params.id } }); if (!existing || !canAccessCase(req.user, existing)) return res.status(404).json({ success: false, message: "Case not found." }); const body = req.body || {}; const item = await db.case.update({ where: { id: existing.id }, data: { name: body.name, gender: body.gender, birthDate: body.birthDate ? new Date(body.birthDate) : undefined, heightCm: body.height ? Number(body.height) : undefined, weightKg: body.weight ? Number(body.weight) : undefined, medicalHistory: body.medicalHistory, idNumber: body.idNumber, phone: body.phone, department: body.department, doctor: body.doctor } }); await audit(req.user.id, "update", "Case", item.id); res.json({ success: true, data: present(item) }); });
-router.delete("/:id", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { const item = await db.case.findUnique({ where: { id: req.params.id } }); if (!item || !canAccessCase(req.user, item)) return res.status(404).json({ success: false, message: "Case not found." }); await db.case.delete({ where: { id: item.id } }); await audit(req.user.id, "delete", "Case", item.id); res.json({ success: true }); });
+async function cascadeDeleteCase(tx: any, caseId: string) {
+  await tx.reportReview.deleteMany({ where: { report: { caseId } } });
+  await tx.annotationSession.deleteMany({ where: { report: { caseId } } });
+  await tx.report.deleteMany({ where: { caseId } });
+  await tx.analysisTask.deleteMany({ where: { caseId } });
+  await tx.scanFile.deleteMany({ where: { caseId } });
+  await tx.case.delete({ where: { id: caseId } });
+}
+router.delete("/:id", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { const item = await db.case.findUnique({ where: { id: req.params.id }, include: { files: true } }); if (!item || !canAccessCase(req.user, item)) return res.status(404).json({ success: false, message: "Case not found." }); await db.$transaction(async (tx) => { await cascadeDeleteCase(tx, item.id); }); for (const file of item.files) await unlink(file.storedPath).catch(() => undefined); await audit(req.user.id, "delete", "Case", item.id); res.json({ success: true }); });
 router.post("/batch", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { const created: any[] = []; const skipped: any[] = []; for (const body of Array.isArray(req.body?.cases) ? req.body.cases : []) { try { created.push(await createCase(req.user, body)); } catch (error) { skipped.push({ reason: error instanceof Error ? error.message : "Invalid case." }); } } res.status(201).json({ success: true, data: { cases: created.map(present), skipped } }); });
-router.post("/batch-delete", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string") : []; const rows = await db.case.findMany({ where: { id: { in: ids } } }); const allowed = rows.filter((item) => canAccessCase(req.user, item)).map((item) => item.id); await db.case.deleteMany({ where: { id: { in: allowed } } }); res.json({ success: true, data: { count: allowed.length } }); });
+router.post("/batch-delete", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => { const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string") : []; const rows = await db.case.findMany({ where: { id: { in: ids } }, include: { files: true } }); const allowed = rows.filter((item) => canAccessCase(req.user, item)); await db.$transaction(async (tx) => { for (const item of allowed) await cascadeDeleteCase(tx, item.id); }); for (const item of allowed) for (const file of item.files) await unlink(file.storedPath).catch(() => undefined); res.json({ success: true, data: { count: allowed.length } }); });
 export default router;

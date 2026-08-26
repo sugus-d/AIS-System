@@ -7,7 +7,7 @@ const router = Router();
 router.get('/', (req: Request, res: Response) => {
   const { category } = req.query;
   
-  const isAdmin = req.headers['x-user-role'] === 'admin';
+  const isAdmin = ['system_admin', 'institution_admin'].includes((req as Request & { user?: { role?: string } }).user?.role || '');
   
   const docs = [
     { id: 1, title: 'PLY scan upload', content: 'Upload an original .ply back scan before running analysis.', category: 'common' },

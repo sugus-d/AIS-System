@@ -45,11 +45,13 @@ export async function runAnalysisTask(taskId: string) {
         }
         return report;
       }
-      const count = await tx.report.count({ where: { caseId: subject.id } });
-      const report = await tx.report.create({ data: { caseId: subject.id, fileId: task.fileId, taskId, version: count + 1, cobbAngle: Number(result.cobb), severity: String(result.severity), modelId: String(result.model_id || "v1.0.0"), resultJson: JSON.stringify(result), artifactDirectory } });
+      const versionAgg = await tx.report.aggregate({ where: { caseId: subject.id }, _max: { version: true } });
+      const report = await tx.report.create({ data: { caseId: subject.id, fileId: task.fileId, taskId, version: (versionAgg._max.version ?? 0) + 1, cobbAngle: Number(result.cobb), severity: String(result.severity), modelId: String(result.model_id || "v1.0.0"), resultJson: JSON.stringify(result), artifactDirectory } });
       await tx.reportReview.create({ data: { reportId: report.id } });
       return report;
     });
+    const afterTransaction = await db.analysisTask.findUnique({ where: { id: taskId } });
+    if (!afterTransaction || afterTransaction.status === "cancelled") return;
     await db.analysisTask.update({ where: { id: taskId }, data: { status: "success", progress: 100, resultJson: JSON.stringify({ reportId: report.id, cobb: result.cobb, severity: result.severity }), finishedAt: new Date() } });
     await db.scanFile.update({ where: { id: task.fileId }, data: { status: "analyzed" } });
     await db.case.update({ where: { id: subject.id }, data: { status: "under_review" } });

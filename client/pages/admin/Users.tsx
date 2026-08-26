@@ -256,20 +256,24 @@ export default function AdminUsers() {
           >
             编辑
           </button>
-          <button
-            className="btn-secondary px-3 py-2"
-            disabled={actionId === row.id}
-            onClick={() => void runAction(row.id, "toggle", row.account)}
-          >
-            {row.status === "active" ? "禁用" : "启用"}
-          </button>
-          <button
-            className="btn-danger px-3 py-2"
-            disabled={actionId === row.id}
-            onClick={() => void runAction(row.id, "delete", row.account)}
-          >
-            删除
-          </button>
+          {isSystemAdmin && (
+            <button
+              className="btn-secondary px-3 py-2"
+              disabled={actionId === row.id}
+              onClick={() => void runAction(row.id, "toggle", row.account)}
+            >
+              {row.status === "active" ? "禁用" : "启用"}
+            </button>
+          )}
+          {isSystemAdmin && (
+            <button
+              className="btn-danger px-3 py-2"
+              disabled={actionId === row.id}
+              onClick={() => void runAction(row.id, "delete", row.account)}
+            >
+              删除
+            </button>
+          )}
         </div>
       ),
     },

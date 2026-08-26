@@ -16,6 +16,8 @@ router.post("/single", requireRoles("system_admin", "institution_admin", "operat
   if (!subject || !canAccessCase(req.user, subject)) return res.status(404).json({ success: false, message: "Case not found." });
   const file = req.body?.fileId ? subject.files.find((item) => item.id === req.body.fileId) : subject.files[0];
   if (!file) return res.status(400).json({ success: false, message: "Upload a PLY scan before analysis." });
+  const inFlight = await db.analysisTask.findFirst({ where: { fileId: file.id, status: { in: ["pending", "running"] } } });
+  if (inFlight) return res.status(409).json({ success: false, message: "该文件已有分析任务进行中，请稍后再试。" });
   const task = await queue(req.user, subject.id, file.id); void enqueueAnalysisTask(task.id); res.status(202).json({ success: true, data: task });
 });
 router.post("/batch", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => {

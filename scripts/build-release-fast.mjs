@@ -111,7 +111,7 @@ const manifest = {
   desktop: packageJson.version,
   nodeService: packageJson.version,
   algorithm: "2.0.0",
-  annotation: "1.0.0",
+  annotation: "1.0.1",
   models: "v1.0.0",
   platform: "win32-x64",
 };

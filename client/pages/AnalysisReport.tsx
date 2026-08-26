@@ -301,7 +301,7 @@ export default function AnalysisReport() {
         try {
             if (action === "approve") await api.approveReview(report.reportNumber);
             else await api.returnReview(report.reportNumber);
-            setReport((prev) => prev ? { ...prev, status: action === "approve" ? "analyzed" : "review_returned" } : null);
+            setReport((prev) => prev ? { ...prev, status: action === "approve" ? "approved" : "review_returned" } : null);
             alert(action === "approve" ? "审核通过，报告已分析" : "报告已退回操作员修改");
         } catch (err) {
             console.error("审核操作失败", err);

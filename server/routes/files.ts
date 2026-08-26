@@ -40,9 +40,16 @@ router.post("/", requireRoles("system_admin", "institution_admin", "operator"), 
 router.delete("/:id", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => {
   const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });
   if (!file || !canAccessCase(req.user, file.case)) return res.status(404).json({ success: false, message: "File not found." });
+  await db.$transaction(async (tx) => {
+    await tx.reportReview.deleteMany({ where: { report: { fileId: file.id } } });
+    await tx.annotationSession.deleteMany({ where: { report: { fileId: file.id } } });
+    await tx.report.deleteMany({ where: { fileId: file.id } });
+    await tx.analysisTask.deleteMany({ where: { fileId: file.id } });
+    await tx.scanFile.delete({ where: { id: file.id } });
+  });
   const expectedRoot = path.resolve(localPaths.scans); const stored = path.resolve(file.storedPath);
   if (stored.startsWith(`${expectedRoot}${path.sep}`)) await unlink(stored).catch(() => undefined);
-  await db.scanFile.delete({ where: { id: file.id } }); await audit(req.user.id, "delete", "ScanFile", file.id);
+  await audit(req.user.id, "delete", "ScanFile", file.id);
   res.json({ success: true });
 });
 

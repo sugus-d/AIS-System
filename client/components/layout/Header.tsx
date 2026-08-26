@@ -50,6 +50,7 @@ export default function Header({ isAdmin }: { isAdmin: boolean }) {
   const displayName = user.name || user.username || "未登录";
 
   const logout = () => {
+    api.clearToken();
     ["user_role", "user_name", "user_department", "user_institution", "user_id", "user_token", "auth_token"].forEach((k) => localStorage.removeItem(k));
     navigate("/login");
   };

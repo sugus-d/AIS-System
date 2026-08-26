@@ -78,9 +78,9 @@ export default function CaseDetail() {
       const c = cr.case || cr;
       const files = (c.files || []).map((f: any) => ({
         id: f.id,
-        name: f.fileName || f.name || f.id,
-        size: Number(f.fileSize || f.size || 0),
-        uploadTime: f.uploadTime,
+        name: f.originalName || f.fileName || f.name || f.id,
+        size: Number(f.sizeBytes || f.fileSize || f.size || 0),
+        uploadTime: f.createdAt || f.uploadTime,
         scanTime: f.scanTime,
         status: f.status,
       }));
@@ -92,10 +92,10 @@ export default function CaseDetail() {
         age: c.birthDate
           ? new Date().getFullYear() - new Date(c.birthDate).getFullYear()
           : Number(c.age || 0),
-        birthday: c.birthDate || "--",
+        birthday: c.birthDate ? String(c.birthDate).slice(0, 10) : "--",
         height: Number(c.height || 0),
         weight: Number(c.weight || 0),
-        idNumber: c.idCard || c.idNumber || "--",
+        idNumber: c.idNumber || "--",
         phone: c.phone || "--",
         medicalHistory: c.medicalHistory || "",
         files,
