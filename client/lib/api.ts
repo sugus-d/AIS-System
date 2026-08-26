@@ -196,6 +196,7 @@ class ApiClient {
   async getAnnotationSubjects() { return this.request<{ subjects: string[] }>('/annotation/subjects'); }
   async createAnnotationSession(reportId: string) { return this.request<{ annotationUrl: string; expiresAt: number }>('/annotation/sessions', { method: 'POST', body: JSON.stringify({ reportId }) }); }
   async completeAnnotation(reportId: string) { return this.request<any>(`/annotation/reports/${reportId}/completed`, { method: 'POST' }); }
+  async reanalyzeReport(reportId: string) { return this.request<any>(`/annotation/reports/${reportId}/reanalyze`, { method: 'POST' }); }
   async resubmitReview(caseId: string) { return this.request<any>(`/reviews/${caseId}/resubmit`, { method: 'POST' }); }
 
   // ============ 任务管理 ============

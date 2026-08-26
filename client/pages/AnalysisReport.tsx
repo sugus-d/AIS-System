@@ -33,6 +33,7 @@ interface AnalysisResult {
     annotatedImage: string;
     heatmapImage: string;
     moireImage: string;
+    normalAngleImage: string;
     diagnosis: string;
     followupSuggestion: string;
     treatment: string;
@@ -168,13 +169,14 @@ export default function AnalysisReport() {
             filePath: fileData.storedPath || data.path || data.filePath || "",
             fileSize: (fileData.sizeBytes || data.fileSize) ? `${((fileData.sizeBytes || data.fileSize) / 1024 / 1024).toFixed(1)} MB` : "",
             uploadTime: fileData.createdAt || data.uploadTime || "",
-            indices: Object.fromEntries(Object.entries(data.indices || {}).map(([key, value]) => [key, Number(value)]).filter(([, value]) => Number.isFinite(value))),
+            indices: Object.fromEntries(Object.entries(data.indices || {}).map(([key, value]) => [key, Number(value)]).filter(([, value]) => Number.isFinite(value)).map(([key, value]) => [key, Math.round(Number(value) * 10) / 10])),
             predictedCobbAngle: cobbAngle,
             severity,
             backImage: data.backImage || "",
             annotatedImage: data.annotatedImage || "",
             heatmapImage: data.heatmapImage || "",
             moireImage: data.moireImage || "",
+            normalAngleImage: data.normalAngleImage || "",
             diagnosis: data.clinicalDiagnosis || data.diagnosis || "",
             followupSuggestion: data.followUpAdvice || data.followupSuggestion || "",
             treatment: data.treatmentPlan || data.treatment || "",
@@ -270,7 +272,7 @@ export default function AnalysisReport() {
         reanalyzingRef.current = true;
         setIsReanalyzing(true);
         try {
-            const task = await api.analyzeSingle(report.caseId, report.fileNumber);
+            const task = await api.reanalyzeReport(report.reportNumber);
             const deadline = Date.now() + 10 * 60 * 1000;
             while (Date.now() < deadline) {
                 await new Promise((resolve) => window.setTimeout(resolve, 1000));
@@ -367,6 +369,7 @@ export default function AnalysisReport() {
                         </div>
                     </div>
 
+                    {isReanalyzing && <div className="card-base p-4 mb-5 border-l-4 border-[color:var(--color-warning)] bg-amber-50"><p className="font-semibold text-[color:var(--color-warning)]">当前状态：分析中</p></div>}
                     {report.status === "under_review" && (
                         <div className="card-base p-4 mb-5 border-l-4 border-[color:var(--color-warning)] bg-amber-50">
                             <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
@@ -422,7 +425,7 @@ export default function AnalysisReport() {
                                     <MetricDisplay label="Curvature Index" value={report.indices.curvature_index} unit="" />
                                     <MetricDisplay label="Height Index" value={report.indices.height_index} unit="" />
                                     <MetricDisplay label="Normal Angle Index" value={report.indices.normal_angle_index} unit="" />
-                                    <MetricDisplay label="Cobb Angle" value={report.predictedCobbAngle} unit="°" critical={report.predictedCobbAngle >= 15} />
+                                    <MetricDisplay label="Cobb Angle" value={Math.round(report.predictedCobbAngle)} unit="°" critical={report.predictedCobbAngle >= 15} />
                                 </div>
                                 <div className="mt-3 pt-3 border-t border-[color:var(--color-border)] flex items-center gap-3">
                                     <span className="text-helper text-[color:var(--color-text-tertiary)]">AIS 严重等级</span>
@@ -461,10 +464,10 @@ export default function AnalysisReport() {
                             <div className="card-base p-4">
                                 <h2 className="text-card-title text-[color:var(--color-text-primary)] mb-3">影像结果</h2>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <ImageCard title="初始背部图像" image={report.backImage} onClick={() => { setSelectedImageTitle("初始背部图像"); setSelectedImageIsAnnotated(false); setSelectedImage(report.backImage); }} />
                                     <ImageCard title="带标注的背部图像" image={report.annotatedImage} onClick={() => { setSelectedImageTitle("带标注的背部图像"); setSelectedImageIsAnnotated(true); setSelectedImage(report.annotatedImage); }} />
-                                    <ImageCard title="背部曲率热力图" image={report.heatmapImage} onClick={() => { setSelectedImageTitle("背部曲率热力图"); setSelectedImageIsAnnotated(false); setSelectedImage(report.heatmapImage); }} />
                                     <ImageCard title="Moire 影像" image={report.moireImage} onClick={() => { setSelectedImageTitle("Moire 影像"); setSelectedImageIsAnnotated(false); setSelectedImage(report.moireImage); }} />
+                                    <ImageCard title="背部曲率热力图" image={report.heatmapImage} onClick={() => { setSelectedImageTitle("背部曲率热力图"); setSelectedImageIsAnnotated(false); setSelectedImage(report.heatmapImage); }} />
+                                    <ImageCard title="Normal Angle 热力图" image={report.normalAngleImage} onClick={() => { setSelectedImageTitle("Normal Angle 热力图"); setSelectedImageIsAnnotated(false); setSelectedImage(report.normalAngleImage); }} />
                                 </div>
                             </div>
 

@@ -412,8 +412,8 @@ export default function Toolbar({ onSwitchView }: Props) {
         </>
       )}
 
-      {/* ── Add landmark dropdown — 2D mode only ── */}
-      {viewMode === "2d" && (
+      {/* ── Add landmark dropdown — 2D + 3D ── */}
+      {(
         <>
           <Box
             sx={{ borderLeft: 1, borderColor: "divider", mx: 0.5, height: 20 }}

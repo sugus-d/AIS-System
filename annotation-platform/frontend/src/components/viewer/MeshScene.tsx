@@ -15,6 +15,7 @@ import type { Landmarks } from "../../types";
 import * as THREE from "three";
 import { getMeshUrl } from "../../api/subjects";
 import { useUIStore } from "../../stores/uiStore";
+import { useLandmarkStore } from "../../stores/landmarkStore";
 
 let GLTFLoader: any = null;
 async function ensureGLTFLoader() {
@@ -711,6 +712,141 @@ function BrushHandler({
   return null;
 }
 
+// ── Landmark annotation handler — 3D 点击放置 / 拖拽移动 landmark ──
+function LandmarkAnnotationHandler({
+  meshScene,
+  controlsRef,
+}: {
+  meshScene: THREE.Group | null;
+  controlsRef: React.MutableRefObject<any>;
+}) {
+  const { camera, gl } = useThree();
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const dragTarget = useRef<{ name: string; index: number } | null>(null);
+  const tmpV = useRef(new THREE.Vector3());
+  const pendingLandmark = useUIStore((s) => s.pendingLandmark);
+
+  // 放置期间禁用 orbit controls，避免旋转干扰点击
+  useEffect(() => {
+    if (controlsRef.current) controlsRef.current.enabled = !pendingLandmark;
+    if (gl.domElement) gl.domElement.style.cursor = pendingLandmark ? "crosshair" : "default";
+  }, [pendingLandmark, controlsRef, gl]);
+
+  // 射线求交：只对 mesh 本体（不含 marker / 布料 / 笔刷）
+  const raycastMesh = useCallback(
+    (clientX: number, clientY: number): THREE.Vector3 | null => {
+      if (!meshScene) return null;
+      const rect = gl.domElement.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const meshes: THREE.Object3D[] = [];
+      meshScene.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) meshes.push(obj);
+      });
+      const hits = raycaster.intersectObjects(meshes, false);
+      return hits.length > 0 ? hits[0].point : null;
+    },
+    [meshScene, camera, gl, raycaster],
+  );
+
+  // 屏幕空间找最近 marker（拖拽命中）
+  const findNearbyMarker = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const landmarks = useLandmarkStore.getState().landmarks;
+      let best: { name: string; index: number } | null = null;
+      let bestDist = 18;
+      for (const [name, pts] of Object.entries(landmarks)) {
+        if (!Array.isArray(pts)) continue;
+        for (let i = 0; i < pts.length; i++) {
+          const pt = pts[i];
+          if (!pt || !Array.isArray(pt) || pt[0] == null) continue;
+          tmpV.current.set(pt[0], pt[1], pt[2]).project(camera);
+          const sx = ((tmpV.current.x + 1) / 2) * rect.width + rect.left;
+          const sy = ((1 - tmpV.current.y) / 2) * rect.height + rect.top;
+          const d = Math.hypot(sx - clientX, sy - clientY);
+          if (d < bestDist) {
+            bestDist = d;
+            best = { name, index: i };
+          }
+        }
+      }
+      return best;
+    },
+    [camera, gl],
+  );
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onDown = (e: PointerEvent) => {
+      if (useUIStore.getState().brushMode) return; // 笔刷优先
+      const pending = useUIStore.getState().pendingLandmark;
+      if (pending) return; // 放置由 pointerup 处理
+      const near = findNearbyMarker(e.clientX, e.clientY);
+      if (near) {
+        dragTarget.current = near;
+        if (controlsRef.current) controlsRef.current.enabled = false;
+        canvas.style.cursor = "grabbing";
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      if (useUIStore.getState().brushMode) return;
+      if (dragTarget.current) {
+        const hit = raycastMesh(e.clientX, e.clientY);
+        if (hit) {
+          useLandmarkStore.getState().updateLandmark3D(
+            dragTarget.current.name,
+            dragTarget.current.index,
+            { x: hit.x, y: hit.y, z: hit.z },
+          );
+        }
+      } else if (!useUIStore.getState().pendingLandmark) {
+        canvas.style.cursor = findNearbyMarker(e.clientX, e.clientY)
+          ? "grab"
+          : "default";
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      if (useUIStore.getState().brushMode) return;
+      const pending = useUIStore.getState().pendingLandmark;
+      if (dragTarget.current) {
+        dragTarget.current = null;
+        if (controlsRef.current) controlsRef.current.enabled = !pending;
+        canvas.style.cursor = pending ? "crosshair" : "default";
+        return;
+      }
+      if (pending) {
+        const hit = raycastMesh(e.clientX, e.clientY);
+        if (hit) {
+          useLandmarkStore.getState().updateLandmark3D(pending.name, pending.index, {
+            x: hit.x,
+            y: hit.y,
+            z: hit.z,
+          });
+          useUIStore.getState().setPendingLandmark(null);
+          canvas.style.cursor = "default";
+        }
+      }
+    };
+    canvas.style.cursor = useUIStore.getState().pendingLandmark
+      ? "crosshair"
+      : "default";
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    return () => {
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      if (controlsRef.current) controlsRef.current.enabled = true;
+    };
+  }, [gl, controlsRef, meshScene, raycastMesh, findNearbyMarker]);
+
+  return null;
+}
+
 interface Props {
   subjectId: string;
   landmarks: Landmarks;
@@ -809,6 +945,7 @@ export default function MeshScene({ subjectId, landmarks, onReady }: Props) {
           controlsRef={controlsRef}
           cursorRef={cursorRef}
         />
+        <LandmarkAnnotationHandler meshScene={meshScene} controlsRef={controlsRef} />
       </Canvas>
       {/* Screen-space brush cursor overlay — ref-based DOM, no re-render */}
       <Box

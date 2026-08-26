@@ -158,4 +158,4 @@ def _search_fallback_candidates(
                     best_pt = pt_arr.copy()
                 elif abs(effective_x - best_score) <= margin and y_val < best_pt[1]:
                     best_pt = pt_arr.copy()
-    return best_pt, x_lo, x_hi
+    return best_pt

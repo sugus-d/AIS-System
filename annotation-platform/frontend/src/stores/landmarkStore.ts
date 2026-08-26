@@ -79,9 +79,9 @@ export const useLandmarkStore = create<LandmarkState>((set, get) => ({
   updateLandmark3D: (name, index, pt) => {
     set((state) => {
       const pts = [...(state.landmarks[name] || [])];
-      if (index < pts.length) {
-        pts[index] = [pt.x, pt.y, pt.z];
-      }
+      // 补齐数组到所需长度（3D 点击放置新 landmark 时创建条目）
+      while (pts.length <= index) pts.push(null);
+      pts[index] = [pt.x, pt.y, pt.z];
       return { landmarks: { ...state.landmarks, [name]: pts }, isDirty: true };
     });
   },

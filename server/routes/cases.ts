@@ -6,17 +6,22 @@ import { canAccessCase, requireRoles } from "../middleware/access";
 const router = Router();
 const present = (item: any) => ({ ...item, height: item.heightCm, weight: item.weightKg, fileCount: item._count?.files ?? 0, reportCount: item._count?.reports ?? 0, latestReportTime: item.reports?.[0]?.createdAt ?? null });
 const institutionFor = (user: any, body: any) => user.role === "system_admin" && typeof body?.institutionId === "string" ? body.institutionId : user.institutionId;
+const computeStatus = (item: any, inFlight?: Set<string>) => { if (inFlight?.has(item.id)) return "analyzing"; const latest = Array.isArray(item.reports) ? item.reports[0] : undefined; if (latest) return latest.review?.status || "under_review"; if ((item._count?.files ?? 0) > 0) return "pending_analysis"; return "pending_upload"; };
 
 router.get("/", async (req: any, res) => {
   const page = Math.max(1, Number(req.query.page || 1)); const pageSize = Math.min(Math.max(1, Number(req.query.pageSize || 20)), 100);
   const where: any = req.query.keyword ? { OR: [{ caseNumber: { contains: String(req.query.keyword) } }, { name: { contains: String(req.query.keyword) } }] } : {};
-  if (typeof req.query.status === "string" && req.query.status && req.query.status !== "all") where.status = req.query.status;
-  const rows = await db.case.findMany({ where, include: { _count: { select: { files: true, reports: true } }, reports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 } }, orderBy: { updatedAt: "desc" } });
-  const list = rows.filter((item) => canAccessCase(req.user, item));
-  res.json({ success: true, data: { list: list.slice((page - 1) * pageSize, page * pageSize).map(present), total: list.length, page, pageSize } });
+  const [rows, inFlightRows] = await Promise.all([
+    db.case.findMany({ where, include: { _count: { select: { files: true, reports: true } }, reports: { include: { review: true }, orderBy: { createdAt: "desc" }, take: 1 } }, orderBy: { updatedAt: "desc" } }),
+    db.analysisTask.findMany({ where: { status: { in: ["pending", "running"] } }, select: { caseId: true } }),
+  ]);
+  const inFlight = new Set(inFlightRows.map((task) => task.caseId));
+  let list = rows.filter((item) => canAccessCase(req.user, item));
+  if (typeof req.query.status === "string" && req.query.status && req.query.status !== "all") list = list.filter((item) => computeStatus(item, inFlight) === req.query.status);
+  res.json({ success: true, data: { list: list.slice((page - 1) * pageSize, page * pageSize).map((item) => ({ ...present(item), status: computeStatus(item, inFlight) })), total: list.length, page, pageSize } });
 });
 router.get("/stats/summary", async (req: any, res) => { const rows = (await db.case.findMany({ include: { files: true, reports: true } })).filter((item) => canAccessCase(req.user, item)); res.json({ success: true, data: { total: rows.length, files: rows.reduce((n, item) => n + item.files.length, 0), reports: rows.reduce((n, item) => n + item.reports.length, 0) } }); });
-router.get("/:id", async (req: any, res) => { const item = await db.case.findUnique({ where: { id: req.params.id }, include: { files: { orderBy: { createdAt: "desc" } }, reports: { orderBy: { version: "desc" } } } }); if (!item || !canAccessCase(req.user, item)) return res.status(404).json({ success: false, message: "Case not found." }); return res.json({ success: true, data: present(item) }); });
+router.get("/:id", async (req: any, res) => { const item = await db.case.findUnique({ where: { id: req.params.id }, include: { files: { orderBy: { createdAt: "desc" }, include: { tasks: { orderBy: { createdAt: "desc" }, take: 1 } } }, reports: { orderBy: { version: "desc" } } } }); if (!item || !canAccessCase(req.user, item)) return res.status(404).json({ success: false, message: "Case not found." }); return res.json({ success: true, data: present(item) }); });
 
 async function createCase(user: any, body: any) {
   const institutionId = institutionFor(user, body); if (!institutionId) throw new Error("User institution is not configured.");

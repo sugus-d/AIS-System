@@ -12,6 +12,7 @@ type FileItem = {
   uploadTime?: string;
   scanTime?: string;
   status?: string;
+  taskStatus?: string;
 };
 type Report = {
   id: string;
@@ -83,6 +84,7 @@ export default function CaseDetail() {
         uploadTime: f.createdAt || f.uploadTime,
         scanTime: f.scanTime,
         status: f.status,
+        taskStatus: f.tasks?.[0]?.status,
       }));
       setDetail({
         id: c.id,
@@ -278,10 +280,12 @@ export default function CaseDetail() {
                       <td className="px-5 py-4">
                         <ReportStatus
                           status={
-                            busy === f.id
+                            busy === f.id ||
+                            f.taskStatus === "pending" ||
+                            f.taskStatus === "running"
                               ? "analyzing"
                               : r
-                                ? "analyzed"
+                                ? r.status || "under_review"
                                 : "pending_analysis"
                           }
                         />
@@ -318,9 +322,16 @@ export default function CaseDetail() {
                         <button
                           className="btn-text"
                           onClick={() => analyze(f)}
-                          disabled={busy === f.id || f.status === "deleted"}
+                          disabled={
+                            busy === f.id ||
+                            f.status === "deleted" ||
+                            f.taskStatus === "pending" ||
+                            f.taskStatus === "running"
+                          }
                         >
-                          {busy === f.id
+                          {busy === f.id ||
+                          f.taskStatus === "pending" ||
+                          f.taskStatus === "running"
                             ? "分析中"
                             : r
                               ? "重新分析"
@@ -391,8 +402,9 @@ function ReportStatus({ status }: { status: string }) {
   const map: Record<string, [string, string]> = {
     analyzing: ["分析中", "tag-warning"],
     under_review: ["审核中", "tag-warning"],
-    analyzed: ["已分析", "tag-success"],
+    approved: ["已通过", "tag-success"],
     pending_analysis: ["待分析", "tag-error"],
+    pending_upload: ["待上传", "tag-error"],
     review_returned: ["待修改", "tag-error"],
   };
   const [label, cls] = map[status] || ["待分析", "tag-error"];
