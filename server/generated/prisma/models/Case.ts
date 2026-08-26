@@ -45,6 +45,8 @@ export type CaseMinAggregateOutputType = {
   heightCm: number | null
   weightKg: number | null
   medicalHistory: string | null
+  idNumber: string | null
+  phone: string | null
   department: string | null
   institutionId: string | null
   doctor: string | null
@@ -63,6 +65,8 @@ export type CaseMaxAggregateOutputType = {
   heightCm: number | null
   weightKg: number | null
   medicalHistory: string | null
+  idNumber: string | null
+  phone: string | null
   department: string | null
   institutionId: string | null
   doctor: string | null
@@ -81,6 +85,8 @@ export type CaseCountAggregateOutputType = {
   heightCm: number
   weightKg: number
   medicalHistory: number
+  idNumber: number
+  phone: number
   department: number
   institutionId: number
   doctor: number
@@ -111,6 +117,8 @@ export type CaseMinAggregateInputType = {
   heightCm?: true
   weightKg?: true
   medicalHistory?: true
+  idNumber?: true
+  phone?: true
   department?: true
   institutionId?: true
   doctor?: true
@@ -129,6 +137,8 @@ export type CaseMaxAggregateInputType = {
   heightCm?: true
   weightKg?: true
   medicalHistory?: true
+  idNumber?: true
+  phone?: true
   department?: true
   institutionId?: true
   doctor?: true
@@ -147,6 +157,8 @@ export type CaseCountAggregateInputType = {
   heightCm?: true
   weightKg?: true
   medicalHistory?: true
+  idNumber?: true
+  phone?: true
   department?: true
   institutionId?: true
   doctor?: true
@@ -252,6 +264,8 @@ export type CaseGroupByOutputType = {
   heightCm: number
   weightKg: number
   medicalHistory: string | null
+  idNumber: string | null
+  phone: string | null
   department: string | null
   institutionId: string | null
   doctor: string | null
@@ -293,6 +307,8 @@ export type CaseWhereInput = {
   heightCm?: Prisma.FloatFilter<"Case"> | number
   weightKg?: Prisma.FloatFilter<"Case"> | number
   medicalHistory?: Prisma.StringNullableFilter<"Case"> | string | null
+  idNumber?: Prisma.StringNullableFilter<"Case"> | string | null
+  phone?: Prisma.StringNullableFilter<"Case"> | string | null
   department?: Prisma.StringNullableFilter<"Case"> | string | null
   institutionId?: Prisma.StringNullableFilter<"Case"> | string | null
   doctor?: Prisma.StringNullableFilter<"Case"> | string | null
@@ -315,6 +331,8 @@ export type CaseOrderByWithRelationInput = {
   heightCm?: Prisma.SortOrder
   weightKg?: Prisma.SortOrder
   medicalHistory?: Prisma.SortOrderInput | Prisma.SortOrder
+  idNumber?: Prisma.SortOrderInput | Prisma.SortOrder
+  phone?: Prisma.SortOrderInput | Prisma.SortOrder
   department?: Prisma.SortOrderInput | Prisma.SortOrder
   institutionId?: Prisma.SortOrderInput | Prisma.SortOrder
   doctor?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -340,6 +358,8 @@ export type CaseWhereUniqueInput = Prisma.AtLeast<{
   heightCm?: Prisma.FloatFilter<"Case"> | number
   weightKg?: Prisma.FloatFilter<"Case"> | number
   medicalHistory?: Prisma.StringNullableFilter<"Case"> | string | null
+  idNumber?: Prisma.StringNullableFilter<"Case"> | string | null
+  phone?: Prisma.StringNullableFilter<"Case"> | string | null
   department?: Prisma.StringNullableFilter<"Case"> | string | null
   institutionId?: Prisma.StringNullableFilter<"Case"> | string | null
   doctor?: Prisma.StringNullableFilter<"Case"> | string | null
@@ -362,6 +382,8 @@ export type CaseOrderByWithAggregationInput = {
   heightCm?: Prisma.SortOrder
   weightKg?: Prisma.SortOrder
   medicalHistory?: Prisma.SortOrderInput | Prisma.SortOrder
+  idNumber?: Prisma.SortOrderInput | Prisma.SortOrder
+  phone?: Prisma.SortOrderInput | Prisma.SortOrder
   department?: Prisma.SortOrderInput | Prisma.SortOrder
   institutionId?: Prisma.SortOrderInput | Prisma.SortOrder
   doctor?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -388,6 +410,8 @@ export type CaseScalarWhereWithAggregatesInput = {
   heightCm?: Prisma.FloatWithAggregatesFilter<"Case"> | number
   weightKg?: Prisma.FloatWithAggregatesFilter<"Case"> | number
   medicalHistory?: Prisma.StringNullableWithAggregatesFilter<"Case"> | string | null
+  idNumber?: Prisma.StringNullableWithAggregatesFilter<"Case"> | string | null
+  phone?: Prisma.StringNullableWithAggregatesFilter<"Case"> | string | null
   department?: Prisma.StringNullableWithAggregatesFilter<"Case"> | string | null
   institutionId?: Prisma.StringNullableWithAggregatesFilter<"Case"> | string | null
   doctor?: Prisma.StringNullableWithAggregatesFilter<"Case"> | string | null
@@ -406,6 +430,8 @@ export type CaseCreateInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -426,6 +452,8 @@ export type CaseUncheckedCreateInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   institutionId?: string | null
   doctor?: string | null
@@ -446,6 +474,8 @@ export type CaseUpdateInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -466,6 +496,8 @@ export type CaseUncheckedUpdateInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   institutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -486,6 +518,8 @@ export type CaseCreateManyInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   institutionId?: string | null
   doctor?: string | null
@@ -504,6 +538,8 @@ export type CaseUpdateManyMutationInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -520,6 +556,8 @@ export type CaseUncheckedUpdateManyInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   institutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -548,6 +586,8 @@ export type CaseCountOrderByAggregateInput = {
   heightCm?: Prisma.SortOrder
   weightKg?: Prisma.SortOrder
   medicalHistory?: Prisma.SortOrder
+  idNumber?: Prisma.SortOrder
+  phone?: Prisma.SortOrder
   department?: Prisma.SortOrder
   institutionId?: Prisma.SortOrder
   doctor?: Prisma.SortOrder
@@ -571,6 +611,8 @@ export type CaseMaxOrderByAggregateInput = {
   heightCm?: Prisma.SortOrder
   weightKg?: Prisma.SortOrder
   medicalHistory?: Prisma.SortOrder
+  idNumber?: Prisma.SortOrder
+  phone?: Prisma.SortOrder
   department?: Prisma.SortOrder
   institutionId?: Prisma.SortOrder
   doctor?: Prisma.SortOrder
@@ -589,6 +631,8 @@ export type CaseMinOrderByAggregateInput = {
   heightCm?: Prisma.SortOrder
   weightKg?: Prisma.SortOrder
   medicalHistory?: Prisma.SortOrder
+  idNumber?: Prisma.SortOrder
+  phone?: Prisma.SortOrder
   department?: Prisma.SortOrder
   institutionId?: Prisma.SortOrder
   doctor?: Prisma.SortOrder
@@ -741,6 +785,8 @@ export type CaseCreateWithoutOwnerInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -760,6 +806,8 @@ export type CaseUncheckedCreateWithoutOwnerInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   institutionId?: string | null
   doctor?: string | null
@@ -807,6 +855,8 @@ export type CaseScalarWhereInput = {
   heightCm?: Prisma.FloatFilter<"Case"> | number
   weightKg?: Prisma.FloatFilter<"Case"> | number
   medicalHistory?: Prisma.StringNullableFilter<"Case"> | string | null
+  idNumber?: Prisma.StringNullableFilter<"Case"> | string | null
+  phone?: Prisma.StringNullableFilter<"Case"> | string | null
   department?: Prisma.StringNullableFilter<"Case"> | string | null
   institutionId?: Prisma.StringNullableFilter<"Case"> | string | null
   doctor?: Prisma.StringNullableFilter<"Case"> | string | null
@@ -825,6 +875,8 @@ export type CaseCreateWithoutInstitutionInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -844,6 +896,8 @@ export type CaseUncheckedCreateWithoutInstitutionInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -888,6 +942,8 @@ export type CaseCreateWithoutFilesInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -907,6 +963,8 @@ export type CaseUncheckedCreateWithoutFilesInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   institutionId?: string | null
   doctor?: string | null
@@ -942,6 +1000,8 @@ export type CaseUpdateWithoutFilesInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -961,6 +1021,8 @@ export type CaseUncheckedUpdateWithoutFilesInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   institutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -980,6 +1042,8 @@ export type CaseCreateWithoutReportsInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -999,6 +1063,8 @@ export type CaseUncheckedCreateWithoutReportsInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   institutionId?: string | null
   doctor?: string | null
@@ -1034,6 +1100,8 @@ export type CaseUpdateWithoutReportsInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1053,6 +1121,8 @@ export type CaseUncheckedUpdateWithoutReportsInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   institutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1072,6 +1142,8 @@ export type CaseCreateManyOwnerInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   institutionId?: string | null
   doctor?: string | null
@@ -1089,6 +1161,8 @@ export type CaseUpdateWithoutOwnerInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1108,6 +1182,8 @@ export type CaseUncheckedUpdateWithoutOwnerInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   institutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1127,6 +1203,8 @@ export type CaseUncheckedUpdateManyWithoutOwnerInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   institutionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1144,6 +1222,8 @@ export type CaseCreateManyInstitutionInput = {
   heightCm: number
   weightKg: number
   medicalHistory?: string | null
+  idNumber?: string | null
+  phone?: string | null
   department?: string | null
   doctor?: string | null
   status?: string
@@ -1161,6 +1241,8 @@ export type CaseUpdateWithoutInstitutionInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1180,6 +1262,8 @@ export type CaseUncheckedUpdateWithoutInstitutionInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1199,6 +1283,8 @@ export type CaseUncheckedUpdateManyWithoutInstitutionInput = {
   heightCm?: Prisma.FloatFieldUpdateOperationsInput | number
   weightKg?: Prisma.FloatFieldUpdateOperationsInput | number
   medicalHistory?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  idNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1256,6 +1342,8 @@ export type CaseSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   heightCm?: boolean
   weightKg?: boolean
   medicalHistory?: boolean
+  idNumber?: boolean
+  phone?: boolean
   department?: boolean
   institutionId?: boolean
   doctor?: boolean
@@ -1279,6 +1367,8 @@ export type CaseSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   heightCm?: boolean
   weightKg?: boolean
   medicalHistory?: boolean
+  idNumber?: boolean
+  phone?: boolean
   department?: boolean
   institutionId?: boolean
   doctor?: boolean
@@ -1299,6 +1389,8 @@ export type CaseSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   heightCm?: boolean
   weightKg?: boolean
   medicalHistory?: boolean
+  idNumber?: boolean
+  phone?: boolean
   department?: boolean
   institutionId?: boolean
   doctor?: boolean
@@ -1319,6 +1411,8 @@ export type CaseSelectScalar = {
   heightCm?: boolean
   weightKg?: boolean
   medicalHistory?: boolean
+  idNumber?: boolean
+  phone?: boolean
   department?: boolean
   institutionId?: boolean
   doctor?: boolean
@@ -1328,7 +1422,7 @@ export type CaseSelectScalar = {
   updatedAt?: boolean
 }
 
-export type CaseOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "caseNumber" | "name" | "gender" | "birthDate" | "heightCm" | "weightKg" | "medicalHistory" | "department" | "institutionId" | "doctor" | "status" | "ownerId" | "createdAt" | "updatedAt", ExtArgs["result"]["case"]>
+export type CaseOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "caseNumber" | "name" | "gender" | "birthDate" | "heightCm" | "weightKg" | "medicalHistory" | "idNumber" | "phone" | "department" | "institutionId" | "doctor" | "status" | "ownerId" | "createdAt" | "updatedAt", ExtArgs["result"]["case"]>
 export type CaseInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   institution?: boolean | Prisma.Case$institutionArgs<ExtArgs>
   owner?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1362,6 +1456,8 @@ export type $CasePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     heightCm: number
     weightKg: number
     medicalHistory: string | null
+    idNumber: string | null
+    phone: string | null
     department: string | null
     institutionId: string | null
     doctor: string | null
@@ -1804,6 +1900,8 @@ export interface CaseFieldRefs {
   readonly heightCm: Prisma.FieldRef<"Case", 'Float'>
   readonly weightKg: Prisma.FieldRef<"Case", 'Float'>
   readonly medicalHistory: Prisma.FieldRef<"Case", 'String'>
+  readonly idNumber: Prisma.FieldRef<"Case", 'String'>
+  readonly phone: Prisma.FieldRef<"Case", 'String'>
   readonly department: Prisma.FieldRef<"Case", 'String'>
   readonly institutionId: Prisma.FieldRef<"Case", 'String'>
   readonly doctor: Prisma.FieldRef<"Case", 'String'>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
@@ -43,12 +43,26 @@ interface AnalysisResult {
     annotation?: { subjectId: string; status: "bound" | "updated"; updatedAt?: string; updatedBy?: string } | null;
 }
 
+const formatDateTime = (value?: string) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};
+
+const formatDate = (value?: string) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
 export default function AnalysisReport() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const role = localStorage.getItem("user_role");
-    const [isAdmin] = useState(role === "system_admin" || role === "admin");
-    const isSystemAdmin = role === "system_admin" || role === "admin";
+    const [isAdmin] = useState(role === "system_admin" || role === "institution_admin" || role === "admin");
+    const isSystemAdmin = role === "system_admin" || role === "institution_admin" || role === "admin";
     const reportIdParam = searchParams.get("reportId");
     const caseIdParam = searchParams.get("caseId");
 
@@ -64,6 +78,7 @@ export default function AnalysisReport() {
     const [selectedImageTitle, setSelectedImageTitle] = useState("");
     const [selectedImageIsAnnotated, setSelectedImageIsAnnotated] = useState(false);
     const [isReanalyzing, setIsReanalyzing] = useState(false);
+    const reanalyzingRef = useRef(false);
     const [reviewing, setReviewing] = useState(false);
     const [annotationLoading, setAnnotationLoading] = useState(false);
     // Kept for compatibility with the legacy hidden annotation card while the
@@ -138,21 +153,21 @@ export default function AnalysisReport() {
         return {
             reportNumber: data.id || data.reportNumber || data.reportNo || "",
             caseId: data.caseId || caseData.id || "",
-            caseNumber: data.caseId || caseData.id || data.caseNumber || data.caseNo || "",
+            caseNumber: data.caseNumber || caseData.caseNumber || data.caseId || caseData.id || "",
             patientName: data.name || data.patientName || caseData.name || "",
-            gender: (data.gender === '男' || caseData.gender === '男') ? 'M' : (data.gender === '女' || caseData.gender === '女') ? 'F' : data.gender === "male" ? "M" : data.gender === "female" ? "F" : "M",
+            gender: (data.gender === '男' || caseData.gender === '男' || data.gender === "male" || caseData.gender === "male") ? 'M' : (data.gender === '女' || caseData.gender === '女' || data.gender === "female" || caseData.gender === "female") ? 'F' : 'M',
             age: data.birthDate || caseData.birthDate ? new Date().getFullYear() - new Date(data.birthDate || caseData.birthDate).getFullYear() : data.age || 0,
-            birthday: data.birthDate || caseData.birthDate || data.birthday || "",
-            height: data.height || caseData.height || 0,
-            weight: data.weight || caseData.weight || 0,
+            birthday: formatDate(data.birthDate || caseData.birthDate || data.birthday),
+            height: data.height || caseData.heightCm || caseData.height || 0,
+            weight: data.weight || caseData.weightKg || caseData.weight || 0,
             department: data.department || caseData.department || "",
-            screeningDate: data.screeningDate || caseData.screeningDate || "",
+            screeningDate: formatDate(data.screeningDate || caseData.screeningDate || fileData.scanTime || fileData.createdAt),
             doctor: data.doctor || caseData.doctor || "",
             fileNumber: data.fileId || fileData.id || data.fileNumber || "",
-            fileName: data.fileName || fileData.fileName || "",
-            filePath: data.originalPath || fileData.originalPath || data.filePath || "",
-            fileSize: data.fileSize || fileData.fileSize ? `${((data.fileSize || fileData.fileSize) / 1024 / 1024).toFixed(1)} MB` : "",
-            uploadTime: data.uploadTime || fileData.uploadTime || "",
+            fileName: fileData.originalName || data.fileName || "",
+            filePath: fileData.storedPath || data.path || data.filePath || "",
+            fileSize: (fileData.sizeBytes || data.fileSize) ? `${((fileData.sizeBytes || data.fileSize) / 1024 / 1024).toFixed(1)} MB` : "",
+            uploadTime: fileData.createdAt || data.uploadTime || "",
             indices: Object.fromEntries(Object.entries(data.indices || {}).map(([key, value]) => [key, Number(value)]).filter(([, value]) => Number.isFinite(value))),
             predictedCobbAngle: cobbAngle,
             severity,
@@ -163,8 +178,8 @@ export default function AnalysisReport() {
             diagnosis: data.clinicalDiagnosis || data.diagnosis || "",
             followupSuggestion: data.followUpAdvice || data.followupSuggestion || "",
             treatment: data.treatmentPlan || data.treatment || "",
-            analysisTime: data.completeTime || data.submitTime || data.analysisTime || "",
-            reportGeneratedTime: data.completeTime || data.reportGeneratedTime || data.reportTime || "",
+            analysisTime: formatDateTime(data.completeTime || data.submitTime || data.analysisTime),
+            reportGeneratedTime: formatDateTime(data.completeTime || data.reportGeneratedTime || data.reportTime),
             status: data.status || data.reportStatus,
             reviewComment: data.reviewComment || "",
             annotation: data.annotation || null,
@@ -231,22 +246,28 @@ export default function AnalysisReport() {
 
     const handleSaveOpinion = async () => {
         if (!report) return;
-        await api.updateReportDiagnosis(report.reportNumber, {
-            clinicalDiagnosis: editedOpinion.diagnosis,
-            followUpAdvice: editedOpinion.followupSuggestion,
-            treatmentPlan: editedOpinion.treatment,
-        });
-        setReport((prev) => prev ? ({
-            ...prev,
-            diagnosis: editedOpinion.diagnosis,
-            followupSuggestion: editedOpinion.followupSuggestion,
-            treatment: editedOpinion.treatment,
-        }) : null);
-        setIsEditingOpinion(false);
+        try {
+            await api.updateReportDiagnosis(report.reportNumber, {
+                clinicalDiagnosis: editedOpinion.diagnosis,
+                followUpAdvice: editedOpinion.followupSuggestion,
+                treatmentPlan: editedOpinion.treatment,
+            });
+            setReport((prev) => prev ? ({
+                ...prev,
+                diagnosis: editedOpinion.diagnosis,
+                followupSuggestion: editedOpinion.followupSuggestion,
+                treatment: editedOpinion.treatment,
+            }) : null);
+            setIsEditingOpinion(false);
+        } catch (err) {
+            console.error("保存诊断意见失败", err);
+            alert("保存失败，请重试");
+        }
     };
 
     const handleReanalyze = async () => {
-        if (!report) return;
+        if (!report || reanalyzingRef.current) return;
+        reanalyzingRef.current = true;
         setIsReanalyzing(true);
         try {
             const task = await api.analyzeSingle(report.caseId, report.fileNumber);
@@ -257,6 +278,8 @@ export default function AnalysisReport() {
                 if (current.status === "success") {
                     const result = typeof current.resultJson === "string" ? JSON.parse(current.resultJson) : current.resultJson;
                     if (!result?.reportId) throw new Error("Analysis completed without a report ID.");
+                    const fresh = await api.getReport(result.reportId);
+                    setReport(adaptReportData(fresh));
                     navigate(`/analysis-report?reportId=${result.reportId}`, { replace: true });
                     return;
                 }
@@ -267,6 +290,7 @@ export default function AnalysisReport() {
             console.error("Failed to reanalyze report:", err);
             alert("重新分析失败，请稍后重试");
         } finally {
+            reanalyzingRef.current = false;
             setIsReanalyzing(false);
         }
     };
@@ -355,6 +379,7 @@ export default function AnalysisReport() {
                         </div>
                     )}
                     {report.status === "review_returned" && <div className="card-base p-4 mb-4 text-[color:var(--color-error)]">审核退回：{report.reviewComment || "请根据审核意见修改后重新提交。"}</div>}
+                    {report.status === "approved" && <div className="card-base p-4 mb-4 border-l-4 border-[color:var(--color-success)] bg-emerald-50"><p className="font-semibold text-[color:var(--color-success)]">当前状态：审核已通过</p></div>}
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div className="space-y-3">
@@ -418,6 +443,9 @@ export default function AnalysisReport() {
                                         <EditorField label="临床诊断" value={editedOpinion.diagnosis} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, diagnosis: value }))} rows={4} />
                                         <EditorField label="随访建议" value={editedOpinion.followupSuggestion} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, followupSuggestion: value }))} rows={3} />
                                         <EditorField label="治疗方案" value={editedOpinion.treatment} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, treatment: value }))} rows={3} />
+                                        <div className="flex justify-end gap-3 pt-1">
+                                            <button onClick={handleSaveOpinion} disabled={!hasOpinionChanges} className="btn-primary">保存</button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="space-y-2">

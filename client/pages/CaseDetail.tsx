@@ -16,7 +16,8 @@ type FileItem = {
 type Report = {
   id: string;
   fileId: string;
-  predictedCobbAngle?: number;
+  cobbAngle?: number;
+  cobb?: number;
   aisLevel?: string;
   completeTime?: string;
   createdAt?: string;
@@ -279,8 +280,9 @@ export default function CaseDetail() {
                           status={
                             busy === f.id
                               ? "analyzing"
-                              : r?.status ||
-                                (r ? "analyzed" : "pending_analysis")
+                              : r
+                                ? "analyzed"
+                                : "pending_analysis"
                           }
                         />
                       </td>
@@ -294,7 +296,7 @@ export default function CaseDetail() {
                       </td>
                       <td className="px-5 py-4">
                         {r
-                          ? `Cobb 角 ${r.predictedCobbAngle ?? "-"}° · ${r.aisLevel || "未分级"}`
+                          ? `Cobb 角 ${r.cobbAngle ?? r.cobb ?? "-"}° · ${r.aisLevel || "未分级"}`
                           : "--"}
                       </td>
                       <td className="px-5 py-4 whitespace-nowrap">

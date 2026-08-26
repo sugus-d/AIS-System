@@ -74,3 +74,4 @@ CONFIG_PATH: Path = PLATFORM_DIR / "config.yaml"
 
 ROI_DIR: Path = RESULTS_ROOT / "roi"
 MESH_PROCESSED_DIR: Path = RESULTS_ROOT / "meshes_processed"
+PREDICTION_OUTPUTS_DIR: Path = RESULTS_ROOT / "prediction-outputs"

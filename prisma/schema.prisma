@@ -35,6 +35,8 @@ model Case {
   heightCm       Float
   weightKg       Float
   medicalHistory String?
+  idNumber       String?
+  phone          String?
   department     String?
   institutionId  String?
   institution    Institution? @relation(fields: [institutionId], references: [id])

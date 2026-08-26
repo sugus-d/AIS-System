@@ -7,6 +7,7 @@ import numpy as np
 
 from ...constants import BILATERAL_LANDMARKS, CACHE_DIR, GT_DIR, SPINE_POINT_COUNT
 from ...utils.logger import logger
+from .._paths import load_algorithm_landmarks
 from .constants import COORD_DIM_3D, PAIR_SIDES, SNAP_DIST_MM, SPINE_SOURCE_PAIRS
 from .mesh_ops import _auto_detect_waist_lower, _load_subject_mesh, _validate_landmarks_on_mesh
 
@@ -30,7 +31,7 @@ def load_landmarks(subject_id: str) -> dict:
             else:
                 out[name] = val
     else:
-        # 从算法缓存加载
+        # 从算法缓存加载（旧 pkl 布局）
         lm_file = CACHE_DIR / subject_id / "landmarks" / "landmarks.pkl"
         if lm_file.exists():
             data = pickle.loads(lm_file.read_bytes())
@@ -49,7 +50,8 @@ def load_landmarks(subject_id: str) -> dict:
                     arr = np.asarray(data[k])
                     out[k] = arr.tolist()
         else:
-            out = {}
+            # 从 AIS 算法输出加载（新布局 landmarks.json）
+            out = load_algorithm_landmarks(subject_id)
 
     # 校验所有 landmark：吸附到 body mesh 最近顶点，远距点标记为未放置
     try:

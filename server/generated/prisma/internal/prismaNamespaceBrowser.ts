@@ -104,6 +104,8 @@ export const CaseScalarFieldEnum = {
   heightCm: 'heightCm',
   weightKg: 'weightKg',
   medicalHistory: 'medicalHistory',
+  idNumber: 'idNumber',
+  phone: 'phone',
   department: 'department',
   institutionId: 'institutionId',
   doctor: 'doctor',

@@ -1,5 +1,6 @@
 """PLY → GLB 转换，笔刷擦除/恢复（body/cloth 顶点分类）。"""
 
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ import trimesh
 from scipy.spatial import KDTree
 
 from ..constants import MESH_DIR, MESH_PROCESSED_DIR, PLATFORM_CACHE_DIR, ROI_DIR
-from ._paths import _get_latest_edited
+from ._paths import _find_algorithm_dir, _get_latest_edited
 
 MIN_FACES = 3  # 构成有效网格所需最少面片数
 EXPAND_MM = 3.0  # 恢复顶点 3mm 自动扩散半径
@@ -24,15 +25,21 @@ def _get_processed_path(subject_id: str) -> str | None:
     edited = _get_latest_edited(subject_id)
     if edited:
         return edited
-    # 2) roi.ply
+    # 2) AIS 算法输出 roi.ply（prediction-outputs/<sid>-*/）
+    algo_dir = _find_algorithm_dir(subject_id)
+    if algo_dir:
+        roi = algo_dir / "roi.ply"
+        if roi.exists():
+            return str(roi)
+    # 3) 旧布局 roi.ply
     p = ROI_DIR / subject_id / "roi.ply"
     if p.exists():
         return str(p)
-    # 3) meshes_processed
+    # 4) meshes_processed
     p = MESH_PROCESSED_DIR / f"{subject_id}_no_clothing.ply"
     if p.exists():
         return str(p)
-    # 4) Fallback: original mesh
+    # 5) Fallback: original mesh
     return _get_clothed_path(subject_id)
 
 
@@ -67,6 +74,21 @@ def _save_edited(tm: trimesh.Trimesh, subject_id: str) -> Path | None:
 # ── Single-mesh GLB ──────────────────────────────────
 
 
+def _export_glb(tm) -> bytes:
+    """导出 trimesh 为 GLB bytes。
+
+    用 mkstemp 拿到文件名后立即关闭句柄，避免 Windows 下句柄未关闭时
+    按名字二次打开同名文件触发 PermissionError。
+    """
+    fd, tmp_name = tempfile.mkstemp(suffix=".glb")
+    os.close(fd)
+    try:
+        tm.export(tmp_name, file_type="glb")
+        return Path(tmp_name).read_bytes()
+    finally:
+        Path(tmp_name).unlink(missing_ok=True)
+
+
 def ply_to_glb_bytes(subject_id: str, clothed: bool = False) -> bytes:
     """加载 PLY mesh → 导出为 GLB bytes（供前端 3D 显示）。
 
@@ -80,17 +102,13 @@ def ply_to_glb_bytes(subject_id: str, clothed: bool = False) -> bytes:
             if isinstance(tm, trimesh.Scene):
                 meshes = [g for g in tm.geometry.values() if isinstance(g, trimesh.Trimesh)]
                 tm = trimesh.util.concatenate(meshes) if meshes else tm
-            with tempfile.NamedTemporaryFile(suffix=".glb", delete=True) as tmp:
-                tm.export(tmp.name, file_type="glb")
-                return Path(tmp.name).read_bytes()
+            return _export_glb(tm)
     p = _get_clothed_path(subject_id) if clothed else _get_processed_path(subject_id)
     if not p:
         raise FileNotFoundError(f"No mesh for {subject_id}")
     v, t = _load(p)
     tm = trimesh.Trimesh(vertices=v, faces=t)
-    with tempfile.NamedTemporaryFile(suffix=".glb", delete=True) as tmp:
-        tm.export(tmp.name, file_type="glb")
-        return Path(tmp.name).read_bytes()
+    return _export_glb(tm)
 
 
 # ── Cloth overlay (face-based, computed from classification) ──

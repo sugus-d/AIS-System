@@ -14,7 +14,7 @@ import matplotlib.tri as mtri
 from scipy.spatial import KDTree
 
 from ..constants import CACHE_DIR, MESH_DIR, MESH_PROCESSED_DIR, ROI_DIR
-from ._paths import _get_latest_edited
+from ._paths import _find_algorithm_dir, _get_latest_edited
 
 CURV_IMG_DIR: Path = CACHE_DIR / "curvature_images"
 
@@ -24,6 +24,12 @@ def _get_processed_path(subject_id: str) -> str | None:
     edited = _get_latest_edited(subject_id)
     if edited:
         return edited
+    # AIS 算法输出 roi.ply（prediction-outputs/<sid>-*/）
+    algo_dir = _find_algorithm_dir(subject_id)
+    if algo_dir:
+        roi = algo_dir / "roi.ply"
+        if roi.exists():
+            return str(roi)
     p = ROI_DIR / subject_id / "roi.ply"
     if p.exists():
         return str(p)
@@ -222,11 +228,11 @@ def render_curvature_image(subject_id: str) -> tuple[bytes, dict]:
     img_dir.mkdir(parents=True, exist_ok=True)
     with open(png_path, "wb") as f:
         f.write(png_bytes)
-    # 先写临时文件再 rename，避免并发读取到 0 字节的 mapping.json
+    # 先写临时文件再 replace（原子覆盖，Windows 下 rename 遇已存在文件会抛 FileExistsError）
     tmp = mapping_path.with_suffix(".json.tmp")
     with open(tmp, "w") as f:
         json.dump(mapping, f)
-    tmp.rename(mapping_path)
+    tmp.replace(mapping_path)
     return png_bytes, mapping
 
 

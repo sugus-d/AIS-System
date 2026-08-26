@@ -16,6 +16,7 @@ type UserRecord = {
   status: "active" | "disabled";
 };
 type NewUser = {
+  username: string;
   name: string;
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
@@ -28,6 +29,7 @@ const roleLabels: Record<UserRecord["role"], string> = {
   operator: "临床操作员",
 };
 const initialNewUser: NewUser = {
+  username: "",
   name: "",
   role: "operator",
   department: "",
@@ -74,6 +76,10 @@ export default function AdminUsers() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newUser, setNewUser] = useState<NewUser>(initialNewUser);
   const [createError, setCreateError] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState<UserRecord | null>(null);
+  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; password: string }>({ username: "", name: "", role: "operator", department: "", password: "" });
+  const [editError, setEditError] = useState("");
 
   const loadUsers = async () => {
     try {
@@ -94,7 +100,7 @@ export default function AdminUsers() {
 
   const runAction = async (
     id: string,
-    action: "reset" | "toggle" | "delete",
+    action: "toggle" | "delete",
     account: string,
   ) => {
     if (action === "delete" && !window.confirm(`确认删除用户“${account}”吗？`))
@@ -102,13 +108,6 @@ export default function AdminUsers() {
     try {
       setActionId(id);
       setFeedback("");
-      if (action === "reset") {
-        const password = window.prompt(`请输入 ${account} 的新密码（至少 12 位）`);
-        if (password === null) return;
-        if (password.length < 12) throw new Error("新密码至少需要 12 位。");
-        await api.resetPassword(id, password);
-        setFeedback(`已重置 ${account} 的密码。`);
-      }
       if (action === "toggle") {
         await api.toggleUserStatus(id);
         setFeedback(`已更新 ${account} 的账户状态。`);
@@ -128,6 +127,10 @@ export default function AdminUsers() {
     }
   };
   const createUser = async () => {
+    if (!/^[\p{L}\p{N}._-]{2,32}$/u.test(newUser.username.trim())) {
+      setCreateError("用户名需为 2-32 位字母、数字或 . _ -，且不能包含空格。");
+      return;
+    }
     if (!newUser.name.trim()) {
       setCreateError("请填写姓名。");
       return;
@@ -135,7 +138,7 @@ export default function AdminUsers() {
     try {
       setActionId("create");
       setCreateError("");
-      const createdUser = await api.createUser(newUser);
+      const createdUser = await api.createUser({ ...newUser, username: newUser.username.trim() });
       setCreateOpen(false);
       setNewUser(initialNewUser);
       setFeedback(`已创建用户 ${createdUser.username}。`);
@@ -144,6 +147,56 @@ export default function AdminUsers() {
       setCreateError(
         caught instanceof Error ? caught.message : "创建用户失败。",
       );
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const isSystemAdmin = role === "system_admin" || role === "admin";
+  const openEdit = (row: UserRecord) => {
+    setEditError("");
+    setEditing(row);
+    setEditForm({
+      username: row.account,
+      name: row.name === "--" ? "" : row.name,
+      role: row.role,
+      department: row.department === "--" ? "" : row.department,
+      password: "",
+    });
+    setEditOpen(true);
+  };
+  const saveEdit = async () => {
+    if (!editing) return;
+    const username = editForm.username.trim();
+    if (!/^[\p{L}\p{N}._-]{2,32}$/u.test(username)) {
+      setEditError("用户名需为 2-32 位字母、数字或 . _ -，且不能包含空格。");
+      return;
+    }
+    if (!editForm.name.trim()) {
+      setEditError("请填写姓名。");
+      return;
+    }
+    if (editForm.password && editForm.password.length < 12) {
+      setEditError("新密码至少需要 12 位。");
+      return;
+    }
+    try {
+      setActionId(editing.id);
+      setEditError("");
+      const payload: any = {
+        username,
+        name: editForm.name.trim(),
+        role: editForm.role,
+        department: editForm.department,
+      };
+      if (editForm.password) payload.password = editForm.password;
+      await api.updateUser(editing.id, payload);
+      setEditOpen(false);
+      setEditing(null);
+      setFeedback(`已更新用户 ${username}。`);
+      await loadUsers();
+    } catch (caught) {
+      setEditError(caught instanceof Error ? caught.message : "保存失败。");
     } finally {
       setActionId(null);
     }
@@ -189,7 +242,7 @@ export default function AdminUsers() {
     {
       key: "id",
       label: "操作",
-      width: "280px",
+      width: "380px",
       align: "right",
       render: (_value, row) => (
         <div
@@ -199,9 +252,9 @@ export default function AdminUsers() {
           <button
             className="btn-secondary px-3 py-2"
             disabled={actionId === row.id}
-            onClick={() => void runAction(row.id, "reset", row.account)}
+            onClick={() => openEdit(row)}
           >
-            重置密码
+            编辑
           </button>
           <button
             className="btn-secondary px-3 py-2"
@@ -312,11 +365,18 @@ export default function AdminUsers() {
                   新增用户
                 </h2>
                 <p className="text-helper mt-1">
-                  账户 ID 将由系统自动生成，创建后用户可使用该 ID 和初始密码登录。
+                  请设置一个易记的用户名（2-32 位字母、数字或 . _ -），创建后使用该用户名和初始密码登录。
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              <Field
+                label="用户名（登录账号）"
+                value={newUser.username}
+                onChange={(value) =>
+                  setNewUser((prev) => ({ ...prev, username: value }))
+                }
+              />
               <Field
                 label="姓名"
                 value={newUser.name}
@@ -380,6 +440,109 @@ export default function AdminUsers() {
                 onClick={() => void createUser()}
               >
                 {actionId === "create" ? "创建中..." : "创建用户"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editOpen && editing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-user-title"
+        >
+          <div className="card-base w-full max-w-xl p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="edit-user-title" className="text-card-title">
+                  编辑用户
+                </h2>
+                <p className="text-helper mt-1">
+                  修改用户名、姓名、角色或科室。
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+              <Field
+                label="用户名（登录账号）"
+                value={editForm.username}
+                onChange={(value) =>
+                  setEditForm((prev) => ({ ...prev, username: value }))
+                }
+              />
+              <Field
+                label="姓名"
+                value={editForm.name}
+                onChange={(value) =>
+                  setEditForm((prev) => ({ ...prev, name: value }))
+                }
+              />
+              <label className="block text-body font-semibold">
+                角色
+                <select
+                  className="input-base mt-2 font-normal"
+                  value={editForm.role}
+                  disabled={!isSystemAdmin}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      role: event.target.value as UserRecord["role"],
+                    }))
+                  }
+                >
+                  {Object.entries(roleLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {!isSystemAdmin && (
+                  <p className="text-helper mt-1 font-normal">
+                    仅系统管理员可修改角色。
+                  </p>
+                )}
+              </label>
+              <Field
+                label="科室"
+                value={editForm.department}
+                onChange={(value) =>
+                  setEditForm((prev) => ({ ...prev, department: value }))
+                }
+              />
+              <div className="md:col-span-2">
+                <Field
+                  label="修改密码（留空则不修改）"
+                  value={editForm.password}
+                  onChange={(value) =>
+                    setEditForm((prev) => ({ ...prev, password: value }))
+                  }
+                  type="password"
+                />
+              </div>
+            </div>
+            {editError && (
+              <p className="text-helper text-[color:var(--color-error)] mt-4">
+                {editError}
+              </p>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                className="btn-secondary"
+                disabled={actionId === editing.id}
+                onClick={() => {
+                  setEditOpen(false);
+                  setEditing(null);
+                }}
+              >
+                取消
+              </button>
+              <button
+                className="btn-primary"
+                disabled={actionId === editing.id}
+                onClick={() => void saveEdit()}
+              >
+                {actionId === editing.id ? "保存中..." : "保存"}
               </button>
             </div>
           </div>

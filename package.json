@@ -15,6 +15,7 @@
     "release:stage": "node scripts/build-release.mjs",
     "release:verify": "node scripts/verify-release-runtime.mjs",
     "build:win": "pnpm release:stage && pnpm release:verify && electron-builder --config electron-builder.release.yml --win nsis",
+    "build:win:quick": "node scripts/build-release-fast.mjs && electron-builder --config electron-builder.release.yml --win nsis",
     "desktop:dev": "tsx desktop/main.ts",
     "db:migrate": "prisma migrate deploy",
     "build:client": "vite build",

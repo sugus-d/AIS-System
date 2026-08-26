@@ -267,10 +267,6 @@ class ApiClient {
     return this.request<any>(`/users/${id}`, { method: 'DELETE' });
   }
 
-  async resetPassword(id: string, password: string) {
-    return this.request<any>(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) });
-  }
-
   async toggleUserStatus(id: string) {
     return this.request<any>(`/users/${id}/toggle-status`, { method: 'POST' });
   }

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from ...constants import MESH_DIR, MESH_PROCESSED_DIR, ROI_DIR
-from .._paths import _get_latest_edited
+from .._paths import _find_algorithm_dir, _get_latest_edited
 from .constants import COORD_DIM_3D, MIN_PROJECT_COORDS, PAIR_SIDES, SNAP_DIST_MM
 
 
@@ -23,6 +23,12 @@ def _load_subject_mesh(subject_id: str) -> tuple[object, np.ndarray]:
     edited = _get_latest_edited(subject_id)
     if edited and Path(edited).exists():
         return _read(edited)
+    # AIS 算法输出 roi.ply（prediction-outputs/<sid>-*/）
+    algo_dir = _find_algorithm_dir(subject_id)
+    if algo_dir:
+        roi = algo_dir / "roi.ply"
+        if roi.exists():
+            return _read(str(roi))
     p = ROI_DIR / subject_id / "roi.ply"
     if p.exists():
         return _read(str(p))
