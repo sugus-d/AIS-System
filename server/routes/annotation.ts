@@ -5,6 +5,7 @@ import { Router } from "express";
 import { db, audit } from "../services/database";
 import { canAccessCase, requireRoles } from "../middleware/access";
 import { enqueueAnalysisTask } from "../services/analysis-runner";
+import { renderImages } from "../services/algorithm";
 
 const router = Router();
 const baseUrl = process.env.ANNOTATION_BASE_URL || "http://127.0.0.1:18765";
@@ -66,6 +67,18 @@ router.post("/reports/:reportId/completed", requireRoles("system_admin", "instit
     if (typeof manualRoiPath !== "string" || !existsSync(manualRoiPath)) return res.status(409).json({ success: false, message: "The source ROI artifact is unavailable for manual reanalysis." });
     const task = await db.analysisTask.create({ data: { type: "annotation_reanalysis", caseId: report.caseId, fileId: report.fileId, submittedById: req.user.id, resultJson: JSON.stringify({ landmarks, manualRoiPath, sourceReportId: report.id }) } });
     await db.annotationSession.updateMany({ where: { reportId: report.id, status: "active" }, data: { status: "completed", updatedById: req.user.id } }); await db.report.update({ where: { id: report.id }, data: { annotationStatus: "updated" } }); await audit(req.user.id, "annotation_completed", "Report", report.id, { reanalysisTaskId: task.id }); void enqueueAnalysisTask(task.id);
+    // 即时渲染标注连线图：原地覆盖当前报告目录的 landmarks.png，供报告页秒级显示；
+    // 渲染失败静默降级，前端仍会等待重分析完成后刷新。
+    try {
+      const renderSubjectId = path.basename(report.artifactDirectory || "");
+      if (renderSubjectId) {
+        await renderImages(manualRoiPath, renderSubjectId, landmarks);
+        original.annotationImageVersion = new Date().toISOString();
+        await db.report.update({ where: { id: report.id }, data: { resultJson: JSON.stringify(original) } });
+      }
+    } catch (error) {
+      console.warn("Annotation image render failed, falling back to reanalysis:", error);
+    }
     res.status(202).json({ success: true, data: { reportId: report.id, status: "updated", reanalysisTaskId: task.id, updatedAt: new Date().toISOString(), updatedBy: req.user.username } });
   } catch (error) { res.status(422).json({ success: false, message: error instanceof Error ? error.message : "Annotation data is invalid." }); }
 });
@@ -73,7 +86,8 @@ router.post("/reports/:reportId/reanalyze", requireRoles("system_admin", "instit
   const report = await db.report.findUnique({ where: { id: req.params.reportId }, include: { case: true } });
   if (!report || !canAccessCase(req.user, report.case)) return res.status(404).json({ success: false, message: "Report not found." });
   const inFlight = await db.analysisTask.findFirst({ where: { fileId: report.fileId, status: { in: ["pending", "running"] } } });
-  if (inFlight) return res.status(409).json({ success: false, message: "该文件已有分析任务进行中，请稍后再试。" });
+  // 已有进行中任务时直接返回该任务 id，由前端轮询等待其完成（幂等，避免 409 打断交互）
+  if (inFlight) return res.status(202).json({ success: true, data: { id: inFlight.id, type: inFlight.type, awaited: true } });
   const manual = await buildManualReanalysisTask(report, req.user);
   if (manual) { void enqueueAnalysisTask(manual.id); return res.status(202).json({ success: true, data: { id: manual.id, type: "annotation_reanalysis" } }); }
   const task = await db.analysisTask.create({ data: { id: crypto.randomUUID(), type: "single_analysis", caseId: report.caseId, fileId: report.fileId, submittedById: req.user.id } });

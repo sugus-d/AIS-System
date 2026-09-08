@@ -1338,6 +1338,8 @@ export const ScanFileScalarFieldEnum = {
   sha256: 'sha256',
   sizeBytes: 'sizeBytes',
   scanTime: 'scanTime',
+  department: 'department',
+  doctor: 'doctor',
   status: 'status',
   createdAt: 'createdAt'
 } as const

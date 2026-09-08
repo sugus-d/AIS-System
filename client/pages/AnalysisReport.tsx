@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import i18next from "@/i18n";
+import { translateBackendMessage } from "@/lib/backendMsg";
 import Header from "@/components/layout/Header";
+import logoInline from "@/assets/logo-pdf.png?inline";
 import Sidebar from "@/components/layout/Sidebar";
 import { getLinkedReports } from "@/lib/workflowStore";
 import api from "@/lib/api";
+import { toast } from "sonner";
 
 type Severity = "negative" | "mild" | "moderate" | "severe";
 
@@ -58,10 +63,86 @@ const formatDate = (value?: string) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+const escapeHtml = (value: unknown) =>
+    String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+
+const metricText = (value: number | undefined | null) =>
+    value == null || Number.isNaN(Number(value)) ? "—" : String(Number(value));
+
+// 生成打印用报告 HTML（字段与页面展示一致），图片以 base64 内嵌，保证打印窗口离线渲染
+const buildReportPdfHtml = (r: AnalysisResult, images: Record<string, string | null>, t: (key: string, opts?: any) => string, xrayImages?: { dataUrl: string | null; uploadTime?: string }[]): string => {
+    const severityZh: Record<string, string> = {
+        negative: t("enums.severityNegative"),
+        mild: t("enums.severityMild"),
+        moderate: t("enums.severityModerate"),
+        severe: t("enums.severitySevere"),
+    };
+    const figure = (src: string | null | undefined, title: string) =>
+        src ? `<figure><img src="${src}" /><figcaption>${title}</figcaption></figure>` : "";
+    const opinion = (title: string, value: string) => `<p class="opinion"><b>${title}：</b>${escapeHtml(value) || "—"}</p>`;
+    // X 光影像（受检者级附加资料）与页面一致地逐张展示
+    const xraySection = (xrayImages && xrayImages.length > 0)
+        ? `<h2>${t("report.xrayImaging")}</h2><div class="xray-grid">${xrayImages.map((x) => figure(x.dataUrl, x.uploadTime ? `${t("report.xrayImage")} ${escapeHtml(formatDateTime(x.uploadTime))}` : t("report.xrayImage"))).join("")}</div>`
+        : "";
+    return `<!doctype html><html lang="${i18next.language || "zh-CN"}"><head><meta charset="utf-8"><title>${t("report.pdfDocTitle")} ${escapeHtml(r.reportNumber)}</title><style>
+@page { size: A4; margin: 14mm; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; color: #172033; margin: 0; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: #64748b; font-size: 13px; margin-bottom: 14px; }
+h2 { font-size: 15px; border-left: 4px solid #2563eb; padding-left: 8px; margin: 18px 0 8px; }
+table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+th, td { border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 13px; text-align: left; }
+th { background: #eff6ff; width: 30%; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.xray-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+figure { margin: 0; break-inside: avoid; text-align: center; }
+/* 算法结果图与 X 光统一尺寸（同高、整体更紧凑），完整显示不裁切 */
+figure img { display: block; width: auto; max-width: 100%; max-height: 200px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 4px; }
+figcaption { font-size: 12px; color: #475569; text-align: center; margin-top: 3px; }
+.opinion { font-size: 13px; line-height: 1.7; margin: 6px 0; white-space: pre-wrap; }
+.logo { text-align: center; margin-bottom: 10px; }
+.logo img { height: 56px; width: auto; border-radius: 10px; }
+</style></head><body>
+<div class="logo"><img src="${logoInline}" alt="AIS" /></div>
+<h1>${t("report.pdfTitle")}</h1>
+<div class="sub">${t("report.pdfReportNo", { no: escapeHtml(r.reportNumber) })}${r.screeningDate ? `　|　${t("report.pdfScreeningDate", { date: escapeHtml(r.screeningDate) })}` : ""}</div>
+<h2>${t("report.patientInfo")}</h2>
+<table>
+<tr><th>${t("report.caseNumber")}</th><td>${escapeHtml(r.caseNumber)}</td><th>${t("report.name")}</th><td>${escapeHtml(r.patientName)}</td></tr>
+<tr><th>${t("report.gender")}</th><td>${r.gender === "M" ? t("enums.genderMale") : t("enums.genderFemale")}</td><th>${t("report.age")}</th><td>${t("report.ageValue", { value: escapeHtml(r.age) })}</td></tr>
+<tr><th>${t("report.birthday")}</th><td>${escapeHtml(r.birthday)}</td><th>${t("report.heightWeight")}</th><td>${t("report.pdfHeightWeight", { height: escapeHtml(r.height), weight: escapeHtml(r.weight) })}</td></tr>
+<tr><th>${t("report.screeningDate")}</th><td>${escapeHtml(r.screeningDate)}</td><th>${t("report.department")}</th><td>${escapeHtml(r.department)}</td></tr>
+<tr><th>${t("report.doctor")}</th><td colspan="3">${escapeHtml(r.doctor)}</td></tr>
+</table>
+<h2>${t("report.algorithmOutput")}</h2>
+<table>
+<tr><th>Asymmetric Index</th><td>${metricText(r.indices.asymmetric_index)}</td></tr>
+<tr><th>Curvature Index</th><td>${metricText(r.indices.curvature_index)}</td></tr>
+<tr><th>Height Index</th><td>${metricText(r.indices.height_index)}</td></tr>
+<tr><th>Normal Angle Index</th><td>${metricText(r.indices.normal_angle_index)}</td></tr>
+<tr><th>${t("report.pdfCobb")}</th><td>${Math.round(r.predictedCobbAngle)}°</td></tr>
+<tr><th>${t("report.pdfSeverity")}</th><td>${severityZh[r.severity] || escapeHtml(r.severity)}</td></tr>
+</table>
+<h2>${t("report.opinion")}</h2>
+${opinion(t("report.pdfDiagnosis"), r.diagnosis)}
+${opinion(t("report.pdfFollowup"), r.followupSuggestion)}
+${opinion(t("report.pdfTreatment"), r.treatment)}
+<h2>${t("report.imaging")}</h2>
+<div class="grid">
+${figure(images.annotatedImage, t("report.annotatedImage"))}
+${figure(images.moireImage, t("report.moireImage"))}
+${figure(images.heatmapImage, t("report.heatmapImage"))}
+${figure(images.normalAngleImage, t("report.normalAngleImage"))}
+</div>
+${xraySection}
+</body></html>`;
+};
+
 export default function AnalysisReport() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const role = localStorage.getItem("user_role");
+    const { t, i18n } = useTranslation();
+    const role = sessionStorage.getItem("user_role");
     const [isAdmin] = useState(role === "system_admin" || role === "institution_admin" || role === "admin");
     const isSystemAdmin = role === "system_admin" || role === "institution_admin" || role === "admin";
     const reportIdParam = searchParams.get("reportId");
@@ -79,14 +160,18 @@ export default function AnalysisReport() {
     const [selectedImageTitle, setSelectedImageTitle] = useState("");
     const [selectedImageIsAnnotated, setSelectedImageIsAnnotated] = useState(false);
     const [isReanalyzing, setIsReanalyzing] = useState(false);
+    const [imagesLoading, setImagesLoading] = useState(false);
     const reanalyzingRef = useRef(false);
     const [reviewing, setReviewing] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
     const [annotationLoading, setAnnotationLoading] = useState(false);
     // Kept for compatibility with the legacy hidden annotation card while the
     // visible entry lives inside the annotated-image preview.
     const [annotationSubjects] = useState<string[]>([]);
     const [annotationSubjectId, setAnnotationSubjectId] = useState("");
     const annotationUpdated = searchParams.get("annotationUpdated") === "1";
+    // 受检者级 X 光影像（附加资料，与报告不绑定）
+    const [xrayFiles, setXrayFiles] = useState<{ id: string; uploadTime?: string }[]>([]);
 
     // 当 report 加载后同步诊断意见编辑状态
     useEffect(() => {
@@ -112,7 +197,7 @@ export default function AnalysisReport() {
                     if (list.length > 0) {
                         setReport(adaptReportData(list[0]));
                     } else {
-                        alert("未找到相关报告");
+                        toast.error(t("report.noReportFound"));
                         navigate(caseIdParam ? `/case-detail/${caseIdParam}` : "/cases");
                     }
                 } else {
@@ -121,13 +206,13 @@ export default function AnalysisReport() {
                     if (linkedReports.length > 0) {
                         setReport(adaptReportData(linkedReports[0]));
                     } else {
-                        alert("未找到相关报告");
+                        toast.error(t("report.noReportFound"));
                         navigate(caseIdParam ? `/case-detail/${caseIdParam}` : "/cases");
                     }
                 }
             } catch (err) {
                 console.error("获取报告失败:", err);
-                alert("获取报告失败");
+                toast.error(t("report.fetchFailed"));
                 navigate(caseIdParam ? `/case-detail/${caseIdParam}` : "/cases");
             } finally {
                 setLoading(false);
@@ -136,6 +221,22 @@ export default function AnalysisReport() {
 
         fetchReport();
     }, [reportIdParam, caseIdParam]);
+
+    // 加载该受检者的 X 光影像（附加数据，与报告不绑定）
+    useEffect(() => {
+        if (!report?.caseId) return;
+        let cancelled = false;
+        api.getFiles({ caseId: report.caseId, pageSize: 100 })
+            .then((d) => {
+                if (cancelled) return;
+                const list = (d.list || d.data?.list || []).filter((f: any) =>
+                    (f.kind || (String(f.fileName || f.originalName || "").toLowerCase().endsWith(".ply") ? "scan" : "xray")) === "xray",
+                );
+                setXrayFiles(list.map((f: any) => ({ id: f.id, uploadTime: f.uploadTime || f.createdAt })));
+            })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+    }, [report?.caseId]);
 
     const adaptReportData = (data: any): AnalysisResult => {
         // 计算严重程度
@@ -194,11 +295,58 @@ export default function AnalysisReport() {
         editedOpinion.treatment !== report.treatment
     ) : false;
 
+    // 轮询分析任务，完成后拉取最新报告并刷新页面；成功返回 true
+    const pollTaskForReport = async (taskId: string, fallbackReportId: string): Promise<boolean> => {
+        const deadline = Date.now() + 10 * 60 * 1000;
+        while (Date.now() < deadline) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1000));
+            let current: any;
+            try {
+                current = await api.getTask(taskId);
+            } catch {
+                continue; // 网络抖动则继续轮询
+            }
+            if (current?.status === "success") {
+                const result = typeof current.resultJson === "string" ? JSON.parse(current.resultJson) : current.resultJson;
+                const reportId = result?.reportId || fallbackReportId;
+                const fresh = await api.getReport(reportId);
+                setReport(adaptReportData(fresh));
+                navigate(`/analysis-report?reportId=${encodeURIComponent(reportId)}`, { replace: true });
+                return true;
+            }
+            if (["failed", "cancelled"].includes(current?.status)) {
+                // 失败时带出真实原因（经后端消息转换），便于页面提示
+                throw new Error(translateBackendMessage(current?.failureReason || t("report.reanalyzeFailed")));
+            }
+        }
+        return false;
+    };
+
     useEffect(() => {
         if (!annotationUpdated || !reportIdParam) return;
-        api.completeAnnotation(reportIdParam).then(() => {
-            setReport((prev) => prev ? { ...prev, annotation: prev.annotation ? { ...prev.annotation, status: "updated", updatedAt: new Date().toISOString() } : prev.annotation } : prev);
-        }).catch(() => undefined);
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await api.completeAnnotation(reportIdParam);
+                if (cancelled) return;
+                // ① 标注连线图已在服务端同步渲染好：立即重拉报告，秒级显示标注后的图像
+                try {
+                    const fresh = await api.getReport(reportIdParam);
+                    if (!cancelled) setReport(adaptReportData(fresh));
+                } catch { /* 拉取失败则等待重分析结果覆盖 */ }
+                // ② 标注完成会自动触发 annotation_reanalysis：图片区显示 loading，等待其完成后刷新（Cobb/热力图）
+                const taskId = data?.reanalysisTaskId;
+                if (taskId) {
+                    setImagesLoading(true);
+                    try {
+                        await pollTaskForReport(taskId, reportIdParam);
+                    } finally {
+                        if (!cancelled) setImagesLoading(false);
+                    }
+                }
+            } catch { /* 静默：无标注/接口异常时保留当前数据，用户可手动"重新分析" */ }
+        })();
+        return () => { cancelled = true; };
     }, [annotationUpdated, reportIdParam]);
 
     const openAnnotation = async () => {
@@ -208,7 +356,7 @@ export default function AnalysisReport() {
             const session = await api.createAnnotationSession(report.reportNumber);
             window.location.href = session.annotationUrl;
         } catch (error) {
-            alert(error instanceof Error ? error.message : "无法打开标注工具");
+            toast.error(error instanceof Error ? error.message : t("report.openAnnotationFailed"));
         } finally {
             setAnnotationLoading(false);
         }
@@ -223,7 +371,7 @@ export default function AnalysisReport() {
                 </div>
                 <div className="layout-content">
                     <div className="content-wrapper flex items-center justify-center h-64">
-                        <p className="text-body text-[color:var(--color-text-secondary)]">加载中...</p>
+                        <p className="text-sm text-[color:var(--color-text-secondary)]">{t("common.loading")}</p>
                     </div>
                 </div>
             </div>
@@ -239,7 +387,7 @@ export default function AnalysisReport() {
                 </div>
                 <div className="layout-content">
                     <div className="content-wrapper flex items-center justify-center h-64">
-                        <p className="text-body text-[color:var(--color-text-secondary)]">报告不存在</p>
+                        <p className="text-sm text-[color:var(--color-text-secondary)]">{t("report.notFound")}</p>
                     </div>
                 </div>
             </div>
@@ -263,7 +411,7 @@ export default function AnalysisReport() {
             setIsEditingOpinion(false);
         } catch (err) {
             console.error("保存诊断意见失败", err);
-            alert("保存失败，请重试");
+            toast.error(t("report.saveFailed"));
         }
     };
 
@@ -271,29 +419,19 @@ export default function AnalysisReport() {
         if (!report || reanalyzingRef.current) return;
         reanalyzingRef.current = true;
         setIsReanalyzing(true);
+        setImagesLoading(true);
         try {
             const task = await api.reanalyzeReport(report.reportNumber);
-            const deadline = Date.now() + 10 * 60 * 1000;
-            while (Date.now() < deadline) {
-                await new Promise((resolve) => window.setTimeout(resolve, 1000));
-                const current = await api.getTask(task.id);
-                if (current.status === "success") {
-                    const result = typeof current.resultJson === "string" ? JSON.parse(current.resultJson) : current.resultJson;
-                    if (!result?.reportId) throw new Error("Analysis completed without a report ID.");
-                    const fresh = await api.getReport(result.reportId);
-                    setReport(adaptReportData(fresh));
-                    navigate(`/analysis-report?reportId=${result.reportId}`, { replace: true });
-                    return;
-                }
-                if (["failed", "cancelled"].includes(current.status)) throw new Error(current.failureReason || "AIS analysis failed.");
-            }
-            throw new Error("AIS analysis timed out.");
+            // 幂等：若后端返回进行中的任务（awaited）则等待其完成，同样会刷新页面
+            const ok = await pollTaskForReport(task.id, report.reportNumber);
+            if (!ok) throw new Error(t("report.reanalyzeFailed"));
         } catch (err) {
             console.error("Failed to reanalyze report:", err);
-            alert("重新分析失败，请稍后重试");
+            toast.error(err instanceof Error ? err.message : t("report.reanalyzeFailed"));
         } finally {
             reanalyzingRef.current = false;
             setIsReanalyzing(false);
+            setImagesLoading(false);
         }
     };
 
@@ -304,12 +442,60 @@ export default function AnalysisReport() {
             if (action === "approve") await api.approveReview(report.reportNumber);
             else await api.returnReview(report.reportNumber);
             setReport((prev) => prev ? { ...prev, status: action === "approve" ? "approved" : "review_returned" } : null);
-            alert(action === "approve" ? "审核通过，报告已分析" : "报告已退回操作员修改");
+            toast.success(action === "approve" ? t("report.reviewApproved") : t("report.reviewReturnedMsg"));
         } catch (err) {
             console.error("审核操作失败", err);
-            alert("审核操作失败，请重试");
+            toast.error(t("report.reviewOpFailed"));
         } finally {
             setReviewing(false);
+        }
+    };
+
+    const toDataUrl = async (url: string): Promise<string | null> => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const blob = await res.blob();
+            return await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result));
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(blob);
+            });
+        } catch {
+            return null;
+        }
+    };
+
+    const handleSavePdf = async () => {
+        if (!report || isExporting) return;
+        setIsExporting(true);
+        try {
+            // 图片转 base64 内嵌，保证打印窗口离线渲染、无加载时序问题
+            const [annotatedImage, moireImage, heatmapImage, normalAngleImage] = await Promise.all([
+                toDataUrl(report.annotatedImage),
+                toDataUrl(report.moireImage),
+                toDataUrl(report.heatmapImage),
+                toDataUrl(report.normalAngleImage),
+            ]);
+            // X 光影像同样内嵌，使 PDF 内容与页面 X 光影像区块一致
+            const xrayImages = await Promise.all(
+                xrayFiles.map(async (x) => ({ dataUrl: await toDataUrl(api.fileDownloadUrl(x.id)), uploadTime: x.uploadTime })),
+            );
+            const html = buildReportPdfHtml(report, { annotatedImage, moireImage, heatmapImage, normalAngleImage }, t, xrayImages);
+            if (window.ais) {
+                const res = await window.ais.saveReportPdf(html, `${report.reportNumber || t("report.pdfDefaultName")}.pdf`, i18n.language);
+                if (res?.ok) toast.success(t("report.pdfSaved", { path: res.filePath }));
+                else if (!res?.canceled) toast.error(t("report.pdfFailed"));
+            } else {
+                // 非 Electron 环境回退到系统打印对话框
+                window.print();
+            }
+        } catch (err) {
+            console.error("导出 PDF 失败:", err);
+            toast.error(t("report.pdfFailed"));
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -325,10 +511,10 @@ export default function AnalysisReport() {
 
     const getSeverityLabel = (severity: Severity) => {
         const labels: Record<Severity, string> = {
-            negative: "正常",
-            mild: "轻度",
-            moderate: "中度",
-            severe: "严重",
+            negative: t("enums.severityNegative"),
+            mild: t("enums.severityMild"),
+            moderate: t("enums.severityModerate"),
+            severe: t("enums.severitySevere"),
         };
         return labels[severity];
     };
@@ -344,74 +530,78 @@ export default function AnalysisReport() {
                 <div className="content-wrapper">
                     <div className="flex items-center justify-between mb-4">
                         <div>
-                            <h1 className="text-page-title text-[color:var(--color-text-primary)] mb-2">报告详情</h1>
-                            <p className="text-body text-[color:var(--color-text-secondary)]">
-                                报告编号：{report.reportNumber} | 受检者：{report.patientName}
+                            <h1 className="text-3xl font-semibold tracking-tight text-foreground text-[color:var(--color-text-primary)] mb-2">{t("report.title")}</h1>
+                            <p className="text-sm text-[color:var(--color-text-secondary)]">
+                                {t("report.reportNo", { no: report.reportNumber, name: report.patientName })}
                             </p>
                         </div>
 
                         <div className="flex flex-wrap items-center justify-end gap-2 max-w-2xl">
                             {/* Review actions are grouped in the status panel below. */}
                             {false && isSystemAdmin && report.status === "under_review" && <>
-                                <button onClick={() => handleReview("approve")} disabled={reviewing} className="btn-primary">审核通过</button>
-                                <button onClick={() => handleReview("return")} disabled={reviewing} className="btn-secondary">审核不通过</button>
+                                <button onClick={() => handleReview("approve")} disabled={reviewing} className="btn-primary">{t("report.approve")}</button>
+                                <button onClick={() => handleReview("return")} disabled={reviewing} className="btn-secondary">{t("report.return")}</button>
                             </>}
                             <button onClick={() => navigate(caseIdParam ? `/case-detail/${caseIdParam}` : `/case-detail/${report.caseId}`)} className="btn-secondary">
-                                返回受检者详情
+                                {t("report.backToCase")}
                             </button>
                             <button onClick={handleReanalyze} disabled={isReanalyzing} className="btn-secondary">
-                                {isReanalyzing ? "分析中..." : "重新分析"}
+                                {isReanalyzing ? t("report.analyzing") : t("report.reanalyze")}
                             </button>
                             <button onClick={handleSaveOpinion} disabled={!hasOpinionChanges} className="btn-primary">
-                                保存
+                                {t("report.save")}
                             </button>
-                            <button onClick={() => window.print()} className="btn-secondary">打印 / 另存为 PDF</button>
+                            <button onClick={handleSavePdf} disabled={isExporting} className="btn-secondary">{isExporting ? t("report.exporting") : t("report.savePdf")}</button>
                         </div>
                     </div>
 
-                    {isReanalyzing && <div className="card-base p-4 mb-5 border-l-4 border-[color:var(--color-warning)] bg-amber-50"><p className="font-semibold text-[color:var(--color-warning)]">当前状态：分析中</p></div>}
+                    {isReanalyzing && <div className="card-base p-4 mb-5 border-l-4 border-[color:var(--color-warning)] bg-amber-50"><p className="font-semibold text-[color:var(--color-warning)]">{t("report.statusAnalyzing")}</p></div>}
                     {report.status === "under_review" && (
                         <div className="card-base p-4 mb-5 border-l-4 border-[color:var(--color-warning)] bg-amber-50">
                             <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
                                 <div>
-                                    <p className="font-semibold text-[color:var(--color-warning)]">当前状态：审核中</p>
-                                    <p className="text-helper text-[color:var(--color-text-secondary)]">{isSystemAdmin ? "请核对本报告内容后，在右侧完成审核。" : "报告正在等待系统管理员审核。"}</p>
+                                    <p className="font-semibold text-[color:var(--color-warning)]">{t("report.statusUnderReview")}</p>
+                                    <p className="text-sm text-muted-foreground text-[color:var(--color-text-secondary)]">{isSystemAdmin ? t("report.statusUnderReviewHintAdmin") : t("report.statusUnderReviewHintUser")}</p>
                                 </div>
-                                {isSystemAdmin && <div className="flex gap-2"><button className="btn-primary" disabled={reviewing} onClick={() => handleReview("approve")}>审核通过</button><button className="btn-secondary" disabled={reviewing} onClick={() => handleReview("return")}>退回修改</button></div>}
+                                {isSystemAdmin && <div className="flex gap-2"><button className="btn-primary" disabled={reviewing} onClick={() => handleReview("approve")}>{t("report.approve")}</button><button className="btn-secondary" disabled={reviewing} onClick={() => handleReview("return")}>{t("report.return")}</button></div>}
                             </div>
                         </div>
                     )}
-                    {report.status === "review_returned" && <div className="card-base p-4 mb-4 text-[color:var(--color-error)]">审核退回：{report.reviewComment || "请根据审核意见修改后重新提交。"}</div>}
-                    {report.status === "approved" && <div className="card-base p-4 mb-4 border-l-4 border-[color:var(--color-success)] bg-emerald-50"><p className="font-semibold text-[color:var(--color-success)]">当前状态：审核已通过</p></div>}
+                    {report.status === "review_returned" && <div className="card-base p-4 mb-4 text-[color:var(--color-error)]">{t("report.statusReviewReturned", { comment: report.reviewComment || t("report.statusReviewReturnedDefault") })}</div>}
+                    {report.status === "approved" && <div className="card-base p-4 mb-4 border-l-4 border-[color:var(--color-success)] bg-emerald-50"><p className="font-semibold text-[color:var(--color-success)]">{t("report.statusApproved")}</p></div>}
 
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                        <div className="space-y-3">
+                    <div className="space-y-4">
+                        {/* 第一行：受检者信息（左） | 算法输出结果（右） */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="card-base p-4">
-                                <h2 className="text-card-title text-[color:var(--color-text-primary)] mb-3">受检者信息</h2>
-                                <div className="grid grid-cols-2 gap-x-4">
-                                    <InfoItem label="受检者编号" value={report.caseNumber} />
-                                    <InfoItem label="姓名" value={report.patientName} />
-                                    <InfoItem label="性别" value={report.gender === "M" ? "男" : "女"} />
-                                    <InfoItem label="年龄" value={`${report.age} 岁`} />
-                                    <InfoItem label="出生日期" value={report.birthday} />
-                                    <InfoItem label="身高 / 体重" value={`${report.height} cm / ${report.weight} kg`} />
-                                    <InfoItem label="筛查日期" value={report.screeningDate} />
-                                    <InfoItem label="就诊科室" value={report.department} />
-                                    <InfoItem label="就诊医生" value={report.doctor} />
+                                <h2 className="text-lg font-semibold text-foreground text-[color:var(--color-text-primary)] mb-4 flex items-center gap-2">
+                                    <span className="inline-block h-4 w-1 rounded-full bg-[color:var(--color-primary)]" />
+                                    {t("report.patientInfo")}
+                                </h2>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Field label={t("report.caseNumber")} value={report.caseNumber} />
+                                    <Field label={t("report.name")} value={report.patientName} />
+                                    <Field label={t("report.gender")} value={report.gender === "M" ? t("enums.genderMale") : t("enums.genderFemale")} />
+                                    <Field label={t("report.age")} value={t("report.ageValue", { value: report.age })} />
+                                    <Field label={t("report.birthday")} value={report.birthday} />
+                                    <Field label={t("report.heightWeight")} value={t("report.heightWeightValue", { height: report.height, weight: report.weight })} />
+                                    <Field label={t("report.screeningDate")} value={report.screeningDate} />
+                                    <Field label={t("report.department")} value={report.department} />
+                                    <Field label={t("report.doctor")} value={report.doctor} />
                                 </div>
                                 {false && isSystemAdmin && report.status === "under_review" && (
                                     <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                             <div>
-                                                <p className="font-semibold text-blue-900">3D 标注修正</p>
-                                                <p className="text-helper text-blue-700">修正 Landmark / ROI 后返回本报告重新分析。</p>
-                                                <p className="mt-1 text-helper text-blue-700">状态：{report.annotation?.status === "updated" ? "已更新，可重新分析" : report.annotation ? `已绑定 ${report.annotation.subjectId}` : "待绑定"}</p>
+                                                <p className="font-semibold text-blue-900">{t("report.annotationTitle")}</p>
+                                                <p className="text-sm text-muted-foreground text-blue-700">{t("report.annotationHint")}</p>
+                                                <p className="mt-1 text-sm text-muted-foreground text-blue-700">{t("report.annotationStatus")}：{report.annotation?.status === "updated" ? t("report.annotationStatusUpdated") : report.annotation ? t("report.annotationStatusBound", { subject: report.annotation.subjectId }) : t("report.annotationStatusPending")}</p>
                                             </div>
                                             <div className="flex flex-wrap items-center gap-2">
-                                                {annotationSubjects.length > 0 && <select className="input-base w-auto min-w-[180px] bg-white" value={annotationSubjectId} onChange={(e) => setAnnotationSubjectId(e.target.value)} aria-label="选择标注数据">
+                                                {annotationSubjects.length > 0 && <select className="input-base w-auto min-w-[180px] bg-white" value={annotationSubjectId} onChange={(e) => setAnnotationSubjectId(e.target.value)} aria-label={t("report.selectSubject")}>
                                                     {annotationSubjects.map((id) => <option key={id} value={id}>{id}</option>)}
                                                 </select>}
-                                                <button className="btn-primary whitespace-nowrap" onClick={openAnnotation} disabled={annotationLoading || !annotationSubjectId}>{annotationLoading ? "打开中..." : "打开标注工具"}</button>
+                                                <button className="btn-primary whitespace-nowrap" onClick={openAnnotation} disabled={annotationLoading || !annotationSubjectId}>{annotationLoading ? t("report.opening") : t("report.openAnnotation")}</button>
                                             </div>
                                         </div>
                                     </div>
@@ -419,77 +609,83 @@ export default function AnalysisReport() {
                             </div>
 
                             <div className="card-base p-4">
-                                <h2 className="text-card-title text-[color:var(--color-text-primary)] mb-3">算法输出结果</h2>
+                                <h2 className="text-lg font-semibold text-foreground text-[color:var(--color-text-primary)] mb-4 flex items-center gap-2">
+                                    <span className="inline-block h-4 w-1 rounded-full bg-[color:var(--color-primary)]" />
+                                    {t("report.algorithmOutput")}
+                                </h2>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <MetricDisplay label="Asymmetric Index" value={report.indices.asymmetric_index} unit="" />
-                                    <MetricDisplay label="Curvature Index" value={report.indices.curvature_index} unit="" />
-                                    <MetricDisplay label="Height Index" value={report.indices.height_index} unit="" />
-                                    <MetricDisplay label="Normal Angle Index" value={report.indices.normal_angle_index} unit="" />
-                                    <MetricDisplay label="Cobb Angle" value={Math.round(report.predictedCobbAngle)} unit="°" critical={report.predictedCobbAngle >= 15} />
+                                    <Field label="Asymmetric Index" value={report.indices.asymmetric_index} />
+                                    <Field label="Curvature Index" value={report.indices.curvature_index} />
+                                    <Field label="Height Index" value={report.indices.height_index} />
+                                    <Field label="Normal Angle Index" value={report.indices.normal_angle_index} />
+                                    <Field label="Cobb Angle" value={Math.round(report.predictedCobbAngle)} unit="°" critical={report.predictedCobbAngle >= 15} />
                                 </div>
-                                <div className="mt-3 pt-3 border-t border-[color:var(--color-border)] flex items-center gap-3">
-                                    <span className="text-helper text-[color:var(--color-text-tertiary)]">AIS 严重等级</span>
-                                    <span className={`text-body font-bold ${getSeverityColor(report.severity)}`}>{getSeverityLabel(report.severity)}</span>
+                                <div className="mt-3 flex items-center justify-between rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-neutral)] px-3 py-2.5">
+                                    <span className="text-xs text-[color:var(--color-text-tertiary)]">{t("report.severity")}</span>
+                                    <span className={`text-sm font-bold ${getSeverityColor(report.severity)}`}>{getSeverityLabel(report.severity)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 第二行：影像结果（左） | X 光影像（右） */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="card-base p-4">
+                                <h2 className="text-lg font-semibold text-foreground text-[color:var(--color-text-primary)] mb-3">{t("report.imaging")}</h2>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <ImageCard title={t("report.annotatedImage")} image={report.annotatedImage} loading={imagesLoading} onClick={() => { setSelectedImageTitle(t("report.annotatedImage")); setSelectedImageIsAnnotated(true); setSelectedImage(report.annotatedImage); }} />
+                                    <ImageCard title={t("report.moireImage")} image={report.moireImage} loading={imagesLoading} onClick={() => { setSelectedImageTitle(t("report.moireImage")); setSelectedImageIsAnnotated(false); setSelectedImage(report.moireImage); }} />
+                                    <ImageCard title={t("report.heatmapImage")} image={report.heatmapImage} loading={imagesLoading} onClick={() => { setSelectedImageTitle(t("report.heatmapImage")); setSelectedImageIsAnnotated(false); setSelectedImage(report.heatmapImage); }} />
+                                    <ImageCard title={t("report.normalAngleImage")} image={report.normalAngleImage} loading={imagesLoading} onClick={() => { setSelectedImageTitle(t("report.normalAngleImage")); setSelectedImageIsAnnotated(false); setSelectedImage(report.normalAngleImage); }} />
                                 </div>
                             </div>
 
                             <div className="card-base p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h2 className="text-card-title text-[color:var(--color-text-primary)]">诊断意见</h2>
-                                    <button onClick={() => setIsEditingOpinion((prev) => !prev)} className="btn-secondary">
-                                        {isEditingOpinion ? "取消编辑" : "编辑"}
-                                    </button>
-                                </div>
-
-                                {isEditingOpinion ? (
-                                    <div className="space-y-4">
-                                        <EditorField label="临床诊断" value={editedOpinion.diagnosis} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, diagnosis: value }))} rows={4} />
-                                        <EditorField label="随访建议" value={editedOpinion.followupSuggestion} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, followupSuggestion: value }))} rows={3} />
-                                        <EditorField label="治疗方案" value={editedOpinion.treatment} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, treatment: value }))} rows={3} />
-                                        <div className="flex justify-end gap-3 pt-1">
-                                            <button onClick={handleSaveOpinion} disabled={!hasOpinionChanges} className="btn-primary">保存</button>
-                                        </div>
-                                    </div>
+                                <h2 className="text-lg font-semibold text-foreground text-[color:var(--color-text-primary)] mb-3">{t("report.xrayImaging")}</h2>
+                                {xrayFiles.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground text-[color:var(--color-text-tertiary)]">{t("report.xrayEmpty")}</p>
                                 ) : (
-                                    <div className="space-y-2">
-                                        <OpinionBlock title="临床诊断" content={report.diagnosis} />
-                                        <OpinionBlock title="随访建议" content={report.followupSuggestion} />
-                                        <OpinionBlock title="治疗方案" content={report.treatment} />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {xrayFiles.map((x) => (
+                                            <button key={x.id} className="card-base overflow-hidden transition-shadow hover:shadow-lg cursor-pointer" onClick={() => { setSelectedImageTitle(t("report.xrayImaging")); setSelectedImageIsAnnotated(false); setSelectedImage(api.fileDownloadUrl(x.id)); }}>
+                                                <div className="w-full aspect-[3/4] max-h-[280px] bg-gray-900 flex items-center justify-center overflow-hidden">
+                                                    <img src={api.fileDownloadUrl(x.id)} alt="X-ray" className="max-w-full max-h-full object-contain" />
+                                                </div>
+                                                <div className="p-3">
+                                                    <p className="text-sm text-muted-foreground font-semibold text-[color:var(--color-text-primary)]">{t("report.xrayImage")} {formatDateTime(x.uploadTime)}</p>
+                                                    <p className="text-sm text-muted-foreground text-[color:var(--color-text-tertiary)]">{t("report.clickToEnlarge")}</p>
+                                                </div>
+                                            </button>
+                                        ))}
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <div className="card-base p-4">
-                                <h2 className="text-card-title text-[color:var(--color-text-primary)] mb-3">影像结果</h2>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <ImageCard title="带标注的背部图像" image={report.annotatedImage} onClick={() => { setSelectedImageTitle("带标注的背部图像"); setSelectedImageIsAnnotated(true); setSelectedImage(report.annotatedImage); }} />
-                                    <ImageCard title="Moire 影像" image={report.moireImage} onClick={() => { setSelectedImageTitle("Moire 影像"); setSelectedImageIsAnnotated(false); setSelectedImage(report.moireImage); }} />
-                                    <ImageCard title="背部曲率热力图" image={report.heatmapImage} onClick={() => { setSelectedImageTitle("背部曲率热力图"); setSelectedImageIsAnnotated(false); setSelectedImage(report.heatmapImage); }} />
-                                    <ImageCard title="Normal Angle 热力图" image={report.normalAngleImage} onClick={() => { setSelectedImageTitle("Normal Angle 热力图"); setSelectedImageIsAnnotated(false); setSelectedImage(report.normalAngleImage); }} />
-                                </div>
+                        {/* 最后一行（通栏）：诊断意见 */}
+                        <div className="card-base p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <h2 className="text-lg font-semibold text-foreground text-[color:var(--color-text-primary)]">{t("report.opinion")}</h2>
+                                <button onClick={() => setIsEditingOpinion((prev) => !prev)} className="btn-secondary">
+                                    {isEditingOpinion ? t("report.cancelEdit") : t("report.edit")}
+                                </button>
                             </div>
 
-                            <div className="card-base p-4">
-                                <h2 className="text-card-title text-[color:var(--color-text-primary)] mb-3">运行数据</h2>
-                                <div className="grid grid-cols-2 gap-x-4">
-                                    <InfoItem label="提交分析时间" value={report.analysisTime} />
-                                    <InfoItem label="完成分析时间" value={report.reportGeneratedTime} />
+                            {isEditingOpinion ? (
+                                <div className="space-y-4">
+                                    <EditorField label={t("report.clinicalDiagnosis")} value={editedOpinion.diagnosis} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, diagnosis: value }))} rows={4} />
+                                    <EditorField label={t("report.followupSuggestion")} value={editedOpinion.followupSuggestion} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, followupSuggestion: value }))} rows={3} />
+                                    <EditorField label={t("report.treatmentPlan")} value={editedOpinion.treatment} onChange={(value) => setEditedOpinion((prev) => ({ ...prev, treatment: value }))} rows={3} />
+                                    <div className="flex justify-end gap-3 pt-1">
+                                        <button onClick={handleSaveOpinion} disabled={!hasOpinionChanges} className="btn-primary">{t("report.save")}</button>
+                                    </div>
                                 </div>
-                            </div>
-
-                            <div className="card-base p-4">
-                                <h2 className="text-card-title text-[color:var(--color-text-primary)] mb-3">文件信息</h2>
-                                <div className="grid grid-cols-2 gap-x-4">
-                                    <InfoItem label="文件编号" value={report.fileNumber} />
-                                    <InfoItem label="文件名" value={report.fileName} />
-                                    <InfoItem label="文件大小" value={report.fileSize} />
-                                    <InfoItem label="上传时间" value={report.uploadTime} />
-                                    <InfoItem label="文件路径" value={report.filePath} />
-                                    <InfoItem label="关联状态" value={report.linkedDeletedRemark || "正常"} />
+                            ) : (
+                                <div className="space-y-2">
+                                    <OpinionBlock title={t("report.clinicalDiagnosis")} content={report.diagnosis} />
+                                    <OpinionBlock title={t("report.followupSuggestion")} content={report.followupSuggestion} />
+                                    <OpinionBlock title={t("report.treatmentPlan")} content={report.treatment} />
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
 
@@ -503,8 +699,8 @@ export default function AnalysisReport() {
                             <img src={selectedImage} alt="Enlarged" className="max-w-full max-h-[70vh] object-contain rounded-btn" />
                         </div>
                         <div className="mt-4 flex flex-wrap justify-end gap-2">
-                            {isSystemAdmin && report.status === "under_review" && selectedImageIsAnnotated && <button onClick={openAnnotation} disabled={annotationLoading} className="btn-primary">{annotationLoading ? "打开中..." : "进入标注平台"}</button>}
-                            <button onClick={() => setSelectedImage(null)} className="btn-secondary">关闭</button>
+                            {isSystemAdmin && report.status === "under_review" && selectedImageIsAnnotated && <button onClick={openAnnotation} disabled={annotationLoading} className="btn-primary">{annotationLoading ? t("report.opening") : t("report.enterAnnotation")}</button>}
+                            <button onClick={() => setSelectedImage(null)} className="btn-secondary">{t("common.close")}</button>
                         </div>
                     </div>
                 </div>
@@ -514,40 +710,23 @@ export default function AnalysisReport() {
     );
 }
 
-function InfoRow({ label, value }: { label: string; value: string | React.ReactNode }) {
+function Field({ label, value, unit = "", critical = false }: { label: string; value: React.ReactNode; unit?: string; critical?: boolean }) {
     return (
-        <div className="flex justify-between items-start py-2 border-b border-[color:var(--color-border)] last:border-b-0 gap-4">
-            <span className="text-body text-[color:var(--color-text-tertiary)] shrink-0">{label}</span>
-            <span className="text-body font-semibold text-[color:var(--color-text-primary)] text-right break-all">{value}</span>
-        </div>
-    );
-}
-
-function MetricDisplay({ label, value, unit, critical }: { label: string; value: number; unit: string; critical?: boolean }) {
-    return (
-        <div className={`p-3 rounded-btn border ${critical ? "border-[color:var(--color-error)] bg-red-50" : "border-[color:var(--color-border)] bg-[color:var(--color-neutral)]"}`}>
-            <p className="text-xs text-[color:var(--color-text-tertiary)] mb-0.5">{label}</p>
+        <div className={`rounded-lg border px-3 py-2.5 min-w-0 ${critical ? "border-[color:var(--color-error)] bg-red-50" : "border-[color:var(--color-border)] bg-[color:var(--color-neutral)]"}`}>
+            <p className="text-xs text-[color:var(--color-text-tertiary)] mb-1">{label}</p>
             <div className="flex items-baseline gap-1">
-                <span className={`text-body font-bold ${critical ? "text-[color:var(--color-error)]" : "text-[color:var(--color-primary)]"}`}>{value}</span>
-                <span className="text-xs text-[color:var(--color-text-secondary)]">{unit}</span>
+                <span className={`text-sm font-semibold truncate ${critical ? "text-[color:var(--color-error)]" : "text-[color:var(--color-text-primary)]"}`}>{value}</span>
+                {unit && <span className="text-xs text-[color:var(--color-text-secondary)] shrink-0">{unit}</span>}
             </div>
         </div>
     );
 }
 
-function InfoItem({ label, value }: { label: string; value: string | React.ReactNode }) {
-    return (
-        <div className="py-1.5 border-b border-[color:var(--color-border)] min-w-0">
-            <p className="text-xs text-[color:var(--color-text-tertiary)] mb-0.5">{label}</p>
-            <p className="text-sm font-semibold text-[color:var(--color-text-primary)] truncate">{value}</p>
-        </div>
-    );
-}
-
-function ImageCard({ title, image, onClick }: { title: string; image: string; onClick: () => void }) {
+function ImageCard({ title, image, onClick, loading = false }: { title: string; image: string; onClick: () => void; loading?: boolean }) {
+    const { t } = useTranslation();
     const hasImage = image && image.trim().length > 0;
     const handleClick = () => {
-        if (hasImage) {
+        if (hasImage && !loading) {
             onClick();
         }
     };
@@ -555,21 +734,26 @@ function ImageCard({ title, image, onClick }: { title: string; image: string; on
     return (
         <button
             onClick={handleClick}
-            className={`card-base overflow-hidden transition-shadow ${hasImage ? 'hover:shadow-lg cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
-            disabled={!hasImage}
+            className={`card-base overflow-hidden transition-shadow ${hasImage && !loading ? 'hover:shadow-lg cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+            disabled={!hasImage || loading}
         >
-            {hasImage ? (
-                <div className="w-full h-52 bg-gray-900 flex items-center justify-center overflow-hidden">
+            {loading ? (
+                <div className="w-full aspect-[3/4] max-h-[280px] bg-gray-900 flex flex-col items-center justify-center gap-2 overflow-hidden">
+                    <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    <span className="text-sm text-white/80">{t("report.analyzing")}</span>
+                </div>
+            ) : hasImage ? (
+                <div className="w-full aspect-[3/4] max-h-[280px] bg-gray-900 flex items-center justify-center overflow-hidden">
                     <img src={image} alt={title} className="max-w-full max-h-full object-contain" />
                 </div>
             ) : (
-                <div className="w-full h-52 bg-[color:var(--color-neutral)] flex items-center justify-center">
-                    <span className="text-helper text-[color:var(--color-text-tertiary)]">暂无图片</span>
+                <div className="w-full aspect-[3/4] max-h-[280px] bg-[color:var(--color-neutral)] flex items-center justify-center">
+                    <span className="text-sm text-muted-foreground text-[color:var(--color-text-tertiary)]">{t("report.noImage")}</span>
                 </div>
             )}
             <div className="p-3">
-                <p className="text-helper font-semibold text-[color:var(--color-text-primary)]">{title}</p>
-                <p className="text-helper text-[color:var(--color-text-tertiary)]">{hasImage ? '点击放大' : '无图像'}</p>
+                <p className="text-sm text-muted-foreground font-semibold text-[color:var(--color-text-primary)]">{title}</p>
+                <p className="text-sm text-muted-foreground text-[color:var(--color-text-tertiary)]">{loading ? t("report.analyzing") : hasImage ? t("report.clickToEnlarge") : t("report.noImageHint")}</p>
             </div>
         </button>
     );
@@ -578,7 +762,7 @@ function ImageCard({ title, image, onClick }: { title: string; image: string; on
 function EditorField({ label, value, onChange, rows }: { label: string; value: string; onChange: (value: string) => void; rows: number }) {
     return (
         <div>
-            <label className="block text-body font-semibold text-[color:var(--color-text-primary)] mb-2">{label}</label>
+            <label className="block text-sm font-semibold text-[color:var(--color-text-primary)] mb-2">{label}</label>
             <textarea className="input-base" rows={rows} value={value} onChange={(e) => onChange(e.target.value)} />
         </div>
     );
@@ -587,8 +771,8 @@ function EditorField({ label, value, onChange, rows }: { label: string; value: s
 function OpinionBlock({ title, content }: { title: string; content: string }) {
     return (
         <div>
-            <h3 className="text-body font-semibold text-[color:var(--color-text-primary)] mb-2">{title}</h3>
-            <p className="text-body text-[color:var(--color-text-secondary)] leading-relaxed">{content}</p>
+            <h3 className="text-sm font-semibold text-[color:var(--color-text-primary)] mb-2">{title}</h3>
+            <p className="text-sm text-[color:var(--color-text-secondary)] leading-relaxed">{content}</p>
         </div>
     );
 }

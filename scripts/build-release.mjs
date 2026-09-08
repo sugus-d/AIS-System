@@ -128,6 +128,7 @@ writeFileSync(path.join(appRoot, "package.json"), JSON.stringify({
   private: true,
   main: "main.cjs",
   type: "commonjs",
+  dependencies: packageJson.dependencies,
 }, null, 2));
 
 const manifest = {

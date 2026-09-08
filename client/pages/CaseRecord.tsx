@@ -1,18 +1,96 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import api from "@/lib/api";
 
 type FormData = { name: string; gender: "" | "male" | "female"; birthday: string; height: string; weight: string; idNumber: string; phone: string; medicalHistory: string };
 const empty = (): FormData => ({ name: "", gender: "", birthday: "", height: "", weight: "", idNumber: "", phone: "", medicalHistory: "" });
+const inputCls = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export default function CaseRecord() {
-  const navigate = useNavigate(); const [params] = useSearchParams(); const caseId = params.get("caseId"); const isEdit = Boolean(caseId); const isAdmin = localStorage.getItem("user_role") === "admin";
+  const navigate = useNavigate(); const { t } = useTranslation(); const [params] = useSearchParams(); const caseId = params.get("caseId"); const isEdit = Boolean(caseId);
+  const isAdmin = sessionStorage.getItem("user_role") === "admin";
   const [form, setForm] = useState<FormData>(empty()); const [loading, setLoading] = useState(false);
+
   useEffect(() => { if (!caseId) return; api.getCase(caseId).then((r: any) => { const c = r.case || r; setForm({ name: c.name || "", gender: c.gender === "female" || c.gender === "女" ? "female" : c.gender ? "male" : "", birthday: c.birthDate ? String(c.birthDate).slice(0, 10) : "", height: String(c.height || ""), weight: String(c.weight || ""), idNumber: c.idNumber || "", phone: c.phone || "", medicalHistory: c.medicalHistory || "" }); }); }, [caseId]);
+
   const change = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm({ ...form, [e.target.name]: e.target.value });
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); if (!form.name || !form.gender || !form.birthday || !form.height || !form.weight) { alert("请填写姓名、性别、生日、身高和体重"); return; } try { setLoading(true); const data = { name: form.name, gender: form.gender, birthDate: form.birthday, height: Number(form.height), weight: Number(form.weight), idNumber: form.idNumber, phone: form.phone, medicalHistory: form.medicalHistory }; if (isEdit && caseId) await api.updateCase(caseId, data); else await api.createCase(data); navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases"); } catch (err: any) { alert(err?.message || "保存失败，请重试"); } finally { setLoading(false); } };
-  return <div className="layout-main"><Sidebar isAdmin={isAdmin}/><div className="layout-header"><Header isAdmin={isAdmin}/></div><div className="layout-content"><div className="content-wrapper"><div className="flex items-center justify-between mb-8"><h1 className="text-page-title">{isEdit ? "编辑受检者" : "新建受检者"}</h1><button className="btn-secondary" onClick={() => navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases")}>返回</button></div><form onSubmit={submit} className="card-base p-8"><h2 className="text-card-title mb-6">基本信息<span className="text-helper ml-2 font-normal">（带 * 为必填项）</span></h2><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Field label="姓名" name="name" value={form.name} onChange={change} required/><label>性别<span className="text-[color:var(--color-error)] ml-0.5">*</span><select className="input-base mt-1" name="gender" value={form.gender} onChange={change} required><option value="">请选择</option><option value="male">男</option><option value="female">女</option></select></label><Field label="出生日期" name="birthday" type="date" value={form.birthday} onChange={change} required/><Field label="身高（cm）" name="height" type="number" value={form.height} onChange={change} required/><Field label="体重（kg）" name="weight" type="number" value={form.weight} onChange={change} required/><Field label="身份证号" name="idNumber" value={form.idNumber} onChange={change}/><Field label="联系电话" name="phone" value={form.phone} onChange={change}/></div><label className="block mt-6">既往病史<textarea className="input-base mt-1" name="medicalHistory" rows={3} value={form.medicalHistory} onChange={change}/></label><div className="flex justify-end gap-3 mt-8"><button type="button" className="btn-secondary" onClick={() => navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases")}>取消</button><button className="btn-primary" disabled={loading}>{loading ? "保存中..." : "保存"}</button></div></form></div></div></div>;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name || !form.gender || !form.birthday || !form.height || !form.weight) { toast.error(t("caseRecord.validation")); return; }
+    try {
+      setLoading(true);
+      const data = { name: form.name, gender: form.gender, birthDate: form.birthday, height: Number(form.height), weight: Number(form.weight), idNumber: form.idNumber, phone: form.phone, medicalHistory: form.medicalHistory };
+      if (isEdit && caseId) await api.updateCase(caseId, data); else await api.createCase(data);
+      navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases");
+    } catch (err: any) { toast.error(err?.message || t("caseRecord.saveFailed")); } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="layout-main">
+      <Sidebar isAdmin={isAdmin} />
+      <div className="layout-header"><Header isAdmin={isAdmin} /></div>
+      <div className="layout-content">
+        <div className="content-wrapper">
+          <div className="mb-8 flex items-center justify-between">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{isEdit ? t("caseRecord.editTitle") : t("caseRecord.newTitle")}</h1>
+            <Button type="button" variant="outline" onClick={() => navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases")}>{t("caseRecord.back")}</Button>
+          </div>
+
+          <Card className="mx-auto max-w-4xl border-border/80">
+            <form onSubmit={submit}>
+              <CardHeader className="border-b border-border/60 px-8 py-6">
+                <CardTitle className="text-lg text-foreground">
+                  {t("caseRecord.basicInfo")}
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">{t("caseRecord.requiredHint")}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 gap-x-6 gap-y-5 px-8 py-6 md:grid-cols-2">
+                <Field label={t("caseRecord.name")} name="name" value={form.name} onChange={change} required />
+                <div className="space-y-2">
+                  <Label htmlFor="gender">{t("caseRecord.gender")}<span className="ml-0.5 text-destructive">*</span></Label>
+                  <select id="gender" className={inputCls} name="gender" value={form.gender} onChange={change} required>
+                    <option value="">{t("caseRecord.selectGender")}</option>
+                    <option value="male">{t("caseRecord.genderMale")}</option>
+                    <option value="female">{t("caseRecord.genderFemale")}</option>
+                  </select>
+                </div>
+                <Field label={t("caseRecord.birthday")} name="birthday" type="date" value={form.birthday} onChange={change} required />
+                <Field label={t("caseRecord.height")} name="height" type="number" value={form.height} onChange={change} required />
+                <Field label={t("caseRecord.weight")} name="weight" type="number" value={form.weight} onChange={change} required />
+                <Field label={t("caseRecord.idNumber")} name="idNumber" value={form.idNumber} onChange={change} />
+                <Field label={t("caseRecord.phone")} name="phone" value={form.phone} onChange={change} />
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="medicalHistory">{t("caseRecord.medicalHistory")}</Label>
+                  <Textarea id="medicalHistory" name="medicalHistory" rows={3} value={form.medicalHistory} onChange={change} />
+                </div>
+              </CardContent>
+              <div className="flex justify-end gap-3 border-t border-border/60 px-8 py-5">
+                <Button type="button" variant="outline" onClick={() => navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases")}>{t("caseRecord.cancel")}</Button>
+                <Button type="submit" disabled={loading}>{loading ? t("caseRecord.saving") : t("caseRecord.save")}</Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
 }
-function Field({ label, name, value, onChange, type = "text", required = false }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; required?: boolean }) { return <label>{label}{required && <span className="text-[color:var(--color-error)] ml-0.5">*</span>}<input className="input-base mt-1" name={name} type={type} value={value} onChange={onChange} required={required}/></label>; }
+
+function Field({ label, name, value, onChange, type = "text", required = false }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; required?: boolean }) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={name}>{label}{required && <span className="ml-0.5 text-destructive">*</span>}</Label>
+      <Input id={name} name={name} type={type} value={value} onChange={onChange} required={required} />
+    </div>
+  );
+}

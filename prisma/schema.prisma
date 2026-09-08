@@ -70,6 +70,8 @@ model ScanFile {
   sha256       String
   sizeBytes    Int
   scanTime     DateTime?
+  department   String?
+  doctor       String?
   status       String   @default("pending_analysis")
   createdAt    DateTime @default(now())
   tasks        AnalysisTask[]

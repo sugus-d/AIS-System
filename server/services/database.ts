@@ -43,6 +43,19 @@ export function applyLocalMigrations() {
       if (!existsSync(contactMigration)) throw new Error("Case contact migration file is missing.");
       connection.exec(readFileSync(contactMigration, "utf8"));
     }
+    if (!hasColumn("ScanFile", "department")) {
+      if (!migrationPath) throw new Error("Local database migration file is missing.");
+      const identityMigration = path.join(path.dirname(path.dirname(migrationPath)), "20260828120000_scanfile_identity", "migration.sql");
+      if (!existsSync(identityMigration)) throw new Error("ScanFile identity migration file is missing.");
+      connection.exec(readFileSync(identityMigration, "utf8"));
+    }
+    if (exists("ReportXray")) {
+      // 报告↔X光关联已废弃：X 光是受检者级附加数据，不绑定报告，回滚该表
+      if (!migrationPath) throw new Error("Local database migration file is missing.");
+      const dropXrayMigration = path.join(path.dirname(path.dirname(migrationPath)), "20260827130000_drop_report_xray", "migration.sql");
+      if (!existsSync(dropXrayMigration)) throw new Error("Report xray rollback migration file is missing.");
+      connection.exec(readFileSync(dropXrayMigration, "utf8"));
+    }
     if (exists("Report")) {
       // 一次性数据清理：同一文件只保留最新一份报告（重新分析已改为原地更新），并清理历史重复版本的级联残留
       connection.exec(`DELETE FROM "Report" WHERE EXISTS (SELECT 1 FROM "Report" AS newer WHERE newer."caseId" = "Report"."caseId" AND newer."fileId" = "Report"."fileId" AND newer.version > "Report".version); DELETE FROM "ReportReview" WHERE "reportId" NOT IN (SELECT id FROM "Report"); DELETE FROM "AnnotationSession" WHERE "reportId" NOT IN (SELECT id FROM "Report");`);
@@ -59,7 +72,7 @@ export async function ensureInitialAdmin() {
   const configPath = process.env.AIS_INITIAL_ADMIN_FILE || path.join(process.cwd(), "deployment", "initial-admin.json");
   if (!existsSync(configPath)) throw new Error(`未找到首次部署管理员配置：${configPath}`);
   const initial = JSON.parse(readFileSync(configPath, "utf8")) as InitialAdmin;
-  if (!initial.username || !initial.password || initial.password.length < 12) throw new Error("首次部署管理员配置无效，密码至少需要 12 位。");
+  if (!initial.username || !initial.password || initial.password.length < 6) throw new Error("首次部署管理员配置无效，密码至少需要 6 位。");
   const institution = await db.institution.upsert({ where: { code: initial.institutionCode || "LOCAL-DEFAULT" }, update: {}, create: { id: "local-default-institution", name: initial.institutionName || "本地默认机构", code: initial.institutionCode || "LOCAL-DEFAULT" } });
   await db.user.create({ data: { username: initial.username, passwordHash: await bcrypt.hash(initial.password, 12), displayName: initial.displayName || initial.username, department: initial.department, institutionId: institution.id, role: "system_admin" } });
   renameSync(configPath, `${configPath}.consumed`);

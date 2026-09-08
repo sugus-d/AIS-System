@@ -10,8 +10,11 @@ import {
 import * as React from "react";
 import { Box } from "@mui/material";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, Line } from "@react-three/drei";
 import type { Landmarks } from "../../types";
+import { SPINE_CONSTRAINT_PAIRS } from "../../constants";
+import { landmarkToDisplay } from "../../hooks/useCanvasRenderer";
+import { useSubjectStore } from "../../stores/subjectStore";
 import * as THREE from "three";
 import { getMeshUrl } from "../../api/subjects";
 import { useUIStore } from "../../stores/uiStore";
@@ -48,6 +51,53 @@ function getPt(
   return { x: pt[0], y: pt[1], z: pt[2] };
 }
 
+// ── 3D 标注约束：脊柱白点 = 两点连线 × 默认投影视角（PC3）张成的平面 ──
+// 白点在该平面内运动 ⇔ 从默认视角（2D 视图）正交投影始终落在对应连线上 → 行为与 2D 一致。
+type ConstraintSegment = { A: THREE.Vector3; B: THREE.Vector3 };
+
+/** 脊柱约束点对应的 3D 线段：P0–P3 取对应双边组 L–R；Pm(index 5) 取 A=mid(axilla,waist)ₗ、B=mid(axilla,waist)ᵣ；P4 自由 → null */
+function getConstraintSegment(
+  index: number,
+  landmarks: Landmarks,
+): ConstraintSegment | null {
+  let A3: number[] | null = null;
+  let B3: number[] | null = null;
+  if (index >= 0 && index < SPINE_CONSTRAINT_PAIRS.length) {
+    const pair = landmarks[SPINE_CONSTRAINT_PAIRS[index]];
+    if (pair?.[0] && pair?.[1]) {
+      A3 = pair[0];
+      B3 = pair[1];
+    }
+  } else if (index === 5) {
+    // mid_back：腋下连线与腰部连线的中线（无两侧对应点）
+    const ax = landmarks["axilla"];
+    const wa = landmarks["waist"];
+    if (ax?.[0] && ax?.[1] && wa?.[0] && wa?.[1]) {
+      A3 = [(ax[0][0] + wa[0][0]) / 2, (ax[0][1] + wa[0][1]) / 2, (ax[0][2] + wa[0][2]) / 2];
+      B3 = [(ax[1][0] + wa[1][0]) / 2, (ax[1][1] + wa[1][1]) / 2, (ax[1][2] + wa[1][2]) / 2];
+    }
+  }
+  if (!A3 || !B3) return null;
+  return {
+    A: new THREE.Vector3(A3[0], A3[1], A3[2]),
+    B: new THREE.Vector3(B3[0], B3[1], B3[2]),
+  };
+}
+
+/** 把点投影到线段上（与 2D 视图 projectOnLine 相同的连线约束，PCA 2D 空间） */
+function projectOnLine2D(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): { x: number; y: number } {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  if (len2 < 1e-8) return { x: a.x, y: a.y };
+  const t = ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2;
+  return { x: a.x + t * abx, y: a.y + t * aby };
+}
+
 const COLORS: Record<string, number> = {
   neck_root: 0x00ffff,
   shoulder_transition: 0xff4444,
@@ -58,26 +108,76 @@ const COLORS: Record<string, number> = {
   spine_points: 0xffffff,
 };
 
+// 脊柱轴线：按解剖顺序连接脊柱点（0 颈根 → 1 肩胛 → 2 腋窝 → 5 中背 → 3 腰部 → 4 腰下缘）
+const SPINE_LINE_ORDER = [0, 1, 2, 5, 3, 4];
+
 function LandmarkMarkers({ landmarks }: { landmarks: Landmarks }) {
   const group = useMemo(() => {
     const g = new THREE.Group();
+    g.renderOrder = 1000; // 标注层置顶
     for (const [name, pts] of Object.entries(landmarks)) {
       if (!Array.isArray(pts)) continue;
       const color = COLORS[name] || 0xffffff;
       for (let i = 0; i < pts.length; i++) {
         const pt = getPt(pts[i]);
         if (!pt) continue;
-        const sphere = new THREE.Mesh(
-          new THREE.SphereGeometry(4, 16, 16),
-          new THREE.MeshBasicMaterial({ color }),
+        // 与 2D marker 样式对标：黑色半透明外圈（模拟 2D 的黑色晕圈+描边）+ 彩色/白色实心圆
+        const halo = new THREE.Mesh(
+          new THREE.SphereGeometry(6.5, 20, 20),
+          new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0.45,
+            depthTest: false,
+            depthWrite: false,
+          }),
         );
-        sphere.position.set(pt.x, pt.y, pt.z);
-        g.add(sphere);
+        halo.position.set(pt.x, pt.y, pt.z);
+        g.add(halo);
+        const core = new THREE.Mesh(
+          new THREE.SphereGeometry(4.5, 20, 20),
+          new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+          }),
+        );
+        core.position.set(pt.x, pt.y, pt.z);
+        g.add(core);
       }
     }
     return g;
   }, [landmarks]);
   return <primitive object={group} />;
+}
+
+// ── 脊柱轴线：按解剖顺序连接脊柱点（0颈根→1肩胛→2腋窝→5中背→3腰部→4腰下缘），
+// 与 2D 的脊柱连线一致（白色实线），始终置顶显示
+function SpineAxisLine({ landmarks }: { landmarks: Landmarks }) {
+  const pts = useMemo(() => {
+    const spine = landmarks["spine_points"];
+    if (!spine) return [];
+    const out: [number, number, number][] = [];
+    for (const i of SPINE_LINE_ORDER) {
+      const p = getPt(spine[i]);
+      if (p) out.push([p.x, p.y, p.z]);
+    }
+    return out;
+  }, [landmarks]);
+  if (pts.length < 2) return null;
+  return (
+    <Line
+      points={pts}
+      color="#ffffff"
+      lineWidth={2}
+      transparent
+      opacity={0.85}
+      depthTest={false}
+      depthWrite={false}
+      renderOrder={1000}
+    />
+  );
 }
 
 function computeLandmarkCenter(landmarks: Landmarks): THREE.Vector3 | null {
@@ -712,17 +812,88 @@ function BrushHandler({
   return null;
 }
 
+// ── 标注辅助线：与 2D 一致——拖脊柱点/放置时显示约束线，拖双边点时显示该组 L–R 线，
+// P4 / waist_lower 显示 waist_lower L → P4 → waist_lower R 折线（白色虚线 [6,4]、4px、0.7 透明度）
+function SpineConstraintGuide({
+  active,
+}: {
+  active: { name: string; index: number } | null;
+}) {
+  const pendingLandmark = useUIStore((s) => s.pendingLandmark);
+  const landmarks = useLandmarkStore((s) => s.landmarks);
+  const activePoint = active ?? pendingLandmark;
+  const pts = useMemo(() => {
+    if (!activePoint) return null;
+    if (activePoint.name === "spine_points") {
+      if (activePoint.index === 4) {
+        // P4 自由点：waist_lower L → P4 → waist_lower R（与 2D polyline 一致）
+        const wp = landmarks["waist_lower"];
+        const p4 = landmarks["spine_points"]?.[4];
+        if (wp?.[0] && wp?.[1] && p4) {
+          return [
+            new THREE.Vector3(wp[0][0], wp[0][1], wp[0][2]),
+            new THREE.Vector3(p4[0], p4[1], p4[2]),
+            new THREE.Vector3(wp[1][0], wp[1][1], wp[1][2]),
+          ];
+        }
+        return null;
+      }
+      // P0–P3：对应双边组 L–R 连线；Pm(5)：腋下-腰部中线
+      const seg = getConstraintSegment(activePoint.index, landmarks);
+      if (!seg) return null;
+      return [seg.A, seg.B];
+    }
+    // 双边点：该组 L–R 3D 线段（与 2D 拖拽时画的连线一致）
+    const pair = landmarks[activePoint.name];
+    if (!pair?.[0] || !pair?.[1]) return null;
+    if (activePoint.name === "waist_lower") {
+      // waist_lower 拖拽：waist_lower L → P4 → waist_lower R 折线（与 2D 一致，无直接 L–R 线）
+      const p4 = landmarks["spine_points"]?.[4];
+      if (!p4) return null;
+      return [
+        new THREE.Vector3(pair[0][0], pair[0][1], pair[0][2]),
+        new THREE.Vector3(p4[0], p4[1], p4[2]),
+        new THREE.Vector3(pair[1][0], pair[1][1], pair[1][2]),
+      ];
+    }
+    return [
+      new THREE.Vector3(pair[0][0], pair[0][1], pair[0][2]),
+      new THREE.Vector3(pair[1][0], pair[1][1], pair[1][2]),
+    ];
+  }, [activePoint, landmarks]);
+  if (!pts || pts.length < 2) return null;
+  return (
+    <Line
+      points={pts.map((p) => p.toArray())}
+      color="#ffffff"
+      lineWidth={4}
+      dashed
+      dashSize={6}
+      gapSize={4}
+      transparent
+      opacity={0.7}
+      depthTest={false}
+      depthWrite={false}
+      renderOrder={1000}
+    />
+  );
+}
+
 // ── Landmark annotation handler — 3D 点击放置 / 拖拽移动 landmark ──
 function LandmarkAnnotationHandler({
   meshScene,
   controlsRef,
+  onConstraint,
 }: {
   meshScene: THREE.Group | null;
   controlsRef: React.MutableRefObject<any>;
+  onConstraint?: (c: { name: string; index: number } | null) => void;
 }) {
   const { camera, gl } = useThree();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const dragTarget = useRef<{ name: string; index: number } | null>(null);
+  // 拖拽期间记录的最终约束 PCA 坐标，松手时用于 lift 贴到 mesh
+  const lastDrag = useRef<{ name: string; index: number; pca: { x: number; y: number } } | null>(null);
   const tmpV = useRef(new THREE.Vector3());
   const pendingLandmark = useUIStore((s) => s.pendingLandmark);
 
@@ -731,25 +902,6 @@ function LandmarkAnnotationHandler({
     if (controlsRef.current) controlsRef.current.enabled = !pendingLandmark;
     if (gl.domElement) gl.domElement.style.cursor = pendingLandmark ? "crosshair" : "default";
   }, [pendingLandmark, controlsRef, gl]);
-
-  // 射线求交：只对 mesh 本体（不含 marker / 布料 / 笔刷）
-  const raycastMesh = useCallback(
-    (clientX: number, clientY: number): THREE.Vector3 | null => {
-      if (!meshScene) return null;
-      const rect = gl.domElement.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return null;
-      const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
-      const ny = -((clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
-      const meshes: THREE.Object3D[] = [];
-      meshScene.traverse((obj) => {
-        if ((obj as THREE.Mesh).isMesh) meshes.push(obj);
-      });
-      const hits = raycaster.intersectObjects(meshes, false);
-      return hits.length > 0 ? hits[0].point : null;
-    },
-    [meshScene, camera, gl, raycaster],
-  );
 
   // 屏幕空间找最近 marker（拖拽命中）
   const findNearbyMarker = useCallback(
@@ -778,6 +930,162 @@ function LandmarkAnnotationHandler({
     [camera, gl],
   );
 
+  const mapping = useLandmarkStore((s) => s.mapping);
+  // PCA 投影参数（与 2D 视图 / lift 同一套）：pca 原点 mean + 三个主轴。
+  // 2D 显示 PC1→Y、PC2→X；PC3 为默认投影视角方向（2D→3D lift 的 ray-cast 方向）。
+  const pc = useMemo(() => {
+    if (!mapping?.pca_mean || !mapping?.pca_Vt) return null;
+    const mean = mapping.pca_mean;
+    const Vt = mapping.pca_Vt;
+    return {
+      mean: new THREE.Vector3(mean[0], mean[1], mean[2]),
+      v0: new THREE.Vector3(Vt[0][0], Vt[0][1], Vt[0][2]).normalize(), // PC1 → Y
+      v1: new THREE.Vector3(Vt[1][0], Vt[1][1], Vt[1][2]).normalize(), // PC2 → X
+      v2: new THREE.Vector3(Vt[2][0], Vt[2][1], Vt[2][2]).normalize(), // PC3：默认视角方向
+    };
+  }, [mapping]);
+
+  // 屏幕鼠标射线 ∩ 固定 PCA 投影平面（法向量 PC3，过 pca 原点）→ PCA 2D 坐标（与 2D 视图同一坐标空间）。
+  // 视角几乎与投影平面平行时返回 null（保持当前位置，避免落点跑到无穷远）。
+  const screenToPCA = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      if (!pc) return null;
+      const rect = gl.domElement.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      const nx = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+      const ray = raycaster.ray;
+      const denom = ray.direction.dot(pc.v2);
+      if (Math.abs(denom) < 1e-4) return null;
+      const t = pc.mean.clone().sub(ray.origin).dot(pc.v2) / denom;
+      if (t <= 0) return null;
+      const d = ray.origin
+        .clone()
+        .add(ray.direction.clone().multiplyScalar(t))
+        .sub(pc.mean);
+      return { x: d.dot(pc.v1), y: d.dot(pc.v0) };
+    },
+    [pc, camera, gl, raycaster],
+  );
+
+  // PCA 2D → 平面 3D（PC3 分量为 0）：拖拽期间的即时预览位置
+  const pcaToPlane3D = useCallback(
+    (pca: { x: number; y: number }): THREE.Vector3 | null => {
+      if (!pc) return null;
+      return pc.mean
+        .clone()
+        .add(pc.v0.clone().multiplyScalar(pca.y))
+        .add(pc.v1.clone().multiplyScalar(pca.x));
+    },
+    [pc],
+  );
+
+  // 2D 连线约束（与 2D 视图 projectOnLine 同一逻辑）：P0–P3 → 对应双边组 L–R 连线，Pm(5) → 腋下-腰部中线，P4 自由
+  const apply2DSpineConstraint = useCallback(
+    (index: number, pca: { x: number; y: number }, lm: Landmarks): { x: number; y: number } => {
+      if (!mapping) return pca;
+      if (index >= 0 && index < SPINE_CONSTRAINT_PAIRS.length) {
+        const pair = lm[SPINE_CONSTRAINT_PAIRS[index]];
+        if (pair?.[0] && pair?.[1]) {
+          const a = landmarkToDisplay(pair[0], mapping);
+          const b = landmarkToDisplay(pair[1], mapping);
+          if (a && b) return projectOnLine2D(pca, a, b);
+        }
+      } else if (index === 5) {
+        const ax = lm["axilla"];
+        const wa = lm["waist"];
+        if (ax?.[0] && ax?.[1] && wa?.[0] && wa?.[1]) {
+          const aL = landmarkToDisplay(ax[0], mapping);
+          const aR = landmarkToDisplay(ax[1], mapping);
+          const wL = landmarkToDisplay(wa[0], mapping);
+          const wR = landmarkToDisplay(wa[1], mapping);
+          if (aL && aR && wL && wR) {
+            const A = { x: (aL.x + wL.x) / 2, y: (aL.y + wL.y) / 2 };
+            const B = { x: (aR.x + wR.x) / 2, y: (aR.y + wR.y) / 2 };
+            return projectOnLine2D(pca, A, B);
+          }
+        }
+      }
+      return pca; // P4 自由点 / 端点缺失时按原始坐标
+    },
+    [mapping],
+  );
+
+  // 与 2D 完全一致：约束后的 PCA 坐标 → 后端 lift（沿 PC3 ray-cast mesh）→ 3D 落点
+  const liftPoint = useCallback(
+    async (name: string, index: number, pca: { x: number; y: number }): Promise<void> => {
+      const currentId = useSubjectStore.getState().currentId;
+      if (!currentId) return;
+      try {
+        const res = await useLandmarkStore.getState().fetchLift(
+          currentId,
+          parseFloat(pca.x.toFixed(1)),
+          parseFloat(pca.y.toFixed(1)),
+        );
+        useLandmarkStore.getState().updateLandmark3D(name, index, res);
+      } catch {
+        /* 失败则保留当前预览位置 */
+      }
+    },
+    [],
+  );
+
+  // 落位：脊柱点先做 2D 连线约束再 lift；其余点直接 lift
+  const commitPoint = useCallback(
+    (name: string, index: number, pca: { x: number; y: number }): Promise<void> => {
+      const constrained =
+        name === "spine_points"
+          ? apply2DSpineConstraint(index, pca, useLandmarkStore.getState().landmarks)
+          : pca;
+      return liftPoint(name, index, constrained);
+    },
+    [apply2DSpineConstraint, liftPoint],
+  );
+
+  // 拖双边点时实时同步对应脊柱中点（与 2D onMouseMove 的 updateSpineMidpoint 行为一致；平面预览）
+  const syncSpineLive = useCallback(
+    (bilateralName: string) => {
+      const lm = useLandmarkStore.getState().landmarks;
+      const syncIndex = (idx: number) => {
+        const cur = lm["spine_points"]?.[idx];
+        if (!cur || !mapping) return;
+        const curPCA = landmarkToDisplay(cur, mapping);
+        if (!curPCA) return;
+        const constrained = apply2DSpineConstraint(idx, curPCA, lm);
+        const tmp = pcaToPlane3D(constrained);
+        if (tmp) {
+          useLandmarkStore.getState().updateLandmark3D("spine_points", idx, {
+            x: tmp.x,
+            y: tmp.y,
+            z: tmp.z,
+          });
+        }
+      };
+      const idx = SPINE_CONSTRAINT_PAIRS.indexOf(bilateralName);
+      if (idx >= 0) syncIndex(idx);
+      if (bilateralName === "axilla" || bilateralName === "waist") syncIndex(5);
+    },
+    [apply2DSpineConstraint, pcaToPlane3D, mapping],
+  );
+
+  // 拖动双边点 / axilla / waist 结束后，把对应脊柱中点重新约束到新连线（2D updateSpineMidpoint / updateMidBack 同源逻辑）
+  const syncSpineAfterMove = useCallback(
+    (bilateralName: string) => {
+      const lm = useLandmarkStore.getState().landmarks;
+      const syncIndex = (idx: number) => {
+        const cur = lm["spine_points"]?.[idx];
+        if (!cur || !mapping) return;
+        const curPCA = landmarkToDisplay(cur, mapping);
+        if (curPCA) void commitPoint("spine_points", idx, curPCA);
+      };
+      const idx = SPINE_CONSTRAINT_PAIRS.indexOf(bilateralName);
+      if (idx >= 0) syncIndex(idx);
+      if (bilateralName === "axilla" || bilateralName === "waist") syncIndex(5);
+    },
+    [commitPoint, mapping],
+  );
+
   useEffect(() => {
     const canvas = gl.domElement;
     const onDown = (e: PointerEvent) => {
@@ -787,6 +1095,7 @@ function LandmarkAnnotationHandler({
       const near = findNearbyMarker(e.clientX, e.clientY);
       if (near) {
         dragTarget.current = near;
+        onConstraint?.(near);
         if (controlsRef.current) controlsRef.current.enabled = false;
         canvas.style.cursor = "grabbing";
       }
@@ -794,13 +1103,29 @@ function LandmarkAnnotationHandler({
     const onMove = (e: PointerEvent) => {
       if (useUIStore.getState().brushMode) return;
       if (dragTarget.current) {
-        const hit = raycastMesh(e.clientX, e.clientY);
-        if (hit) {
-          useLandmarkStore.getState().updateLandmark3D(
-            dragTarget.current.name,
-            dragTarget.current.index,
-            { x: hit.x, y: hit.y, z: hit.z },
-          );
+        const pca = screenToPCA(e.clientX, e.clientY);
+        if (!pca) return; // 视角与标注平面几乎平行：保持当前位置，避免落点跳远
+        const constrained =
+          dragTarget.current.name === "spine_points"
+            ? apply2DSpineConstraint(dragTarget.current.index, pca, useLandmarkStore.getState().landmarks)
+            : pca;
+        const tmp = pcaToPlane3D(constrained);
+        if (tmp) {
+          // 拖拽期间先在 PCA 平面上即时预览，松手后再 lift 贴到 mesh（与 2D 交互节奏一致）
+          lastDrag.current = {
+            name: dragTarget.current.name,
+            index: dragTarget.current.index,
+            pca: constrained,
+          };
+          useLandmarkStore.getState().updateLandmark3D(dragTarget.current.name, dragTarget.current.index, {
+            x: tmp.x,
+            y: tmp.y,
+            z: tmp.z,
+          });
+          // 与 2D 一致：拖动双边点时脊柱中点实时跟随（平面预览）
+          if (dragTarget.current.name !== "spine_points") {
+            syncSpineLive(dragTarget.current.name);
+          }
         }
       } else if (!useUIStore.getState().pendingLandmark) {
         canvas.style.cursor = findNearbyMarker(e.clientX, e.clientY)
@@ -812,19 +1137,24 @@ function LandmarkAnnotationHandler({
       if (useUIStore.getState().brushMode) return;
       const pending = useUIStore.getState().pendingLandmark;
       if (dragTarget.current) {
+        const drag = lastDrag.current;
         dragTarget.current = null;
+        lastDrag.current = null;
+        onConstraint?.(null);
+        if (drag) {
+          void commitPoint(drag.name, drag.index, drag.pca);
+          // 双侧对称点 / axilla / waist 拖动结束后，把脊柱中点重新约束到新连线
+          if (drag.name !== "spine_points") void syncSpineAfterMove(drag.name);
+        }
         if (controlsRef.current) controlsRef.current.enabled = !pending;
         canvas.style.cursor = pending ? "crosshair" : "default";
         return;
       }
       if (pending) {
-        const hit = raycastMesh(e.clientX, e.clientY);
-        if (hit) {
-          useLandmarkStore.getState().updateLandmark3D(pending.name, pending.index, {
-            x: hit.x,
-            y: hit.y,
-            z: hit.z,
-          });
+        const pca = screenToPCA(e.clientX, e.clientY);
+        if (pca) {
+          void commitPoint(pending.name, pending.index, pca);
+          if (pending.name !== "spine_points") void syncSpineAfterMove(pending.name);
           useUIStore.getState().setPendingLandmark(null);
           canvas.style.cursor = "default";
         }
@@ -842,7 +1172,7 @@ function LandmarkAnnotationHandler({
       canvas.removeEventListener("pointerup", onUp);
       if (controlsRef.current) controlsRef.current.enabled = true;
     };
-  }, [gl, controlsRef, meshScene, raycastMesh, findNearbyMarker]);
+  }, [gl, controlsRef, meshScene, findNearbyMarker, screenToPCA, apply2DSpineConstraint, pcaToPlane3D, commitPoint, syncSpineAfterMove, syncSpineLive, onConstraint]);
 
   return null;
 }
@@ -855,6 +1185,7 @@ interface Props {
 
 export default function MeshScene({ subjectId, landmarks, onReady }: Props) {
   const meshVersion = useUIStore((s) => s.meshVersion);
+  const [activeConstraint, setActiveConstraint] = useState<{ name: string; index: number } | null>(null);
   const meshUrl = getMeshUrl(subjectId) + "?v=" + meshVersion;
   const [meshScene, setMeshScene] = useState<THREE.Group | null>(null);
   const [meshLoaded, setMeshLoaded] = useState(false);
@@ -939,13 +1270,15 @@ export default function MeshScene({ subjectId, landmarks, onReady }: Props) {
         />
         <MeshModel url={meshUrl} onMeshReady={handleMeshReady} />
         <LandmarkMarkers landmarks={landmarks} />
+        <SpineAxisLine landmarks={landmarks} />
         <ClothOverlay subjectId={subjectId} />
         <BrushHandler
           subjectId={subjectId}
           controlsRef={controlsRef}
           cursorRef={cursorRef}
         />
-        <LandmarkAnnotationHandler meshScene={meshScene} controlsRef={controlsRef} />
+        <LandmarkAnnotationHandler meshScene={meshScene} controlsRef={controlsRef} onConstraint={setActiveConstraint} />
+        <SpineConstraintGuide active={activeConstraint} />
       </Canvas>
       {/* Screen-space brush cursor overlay — ref-based DOM, no re-render */}
       <Box

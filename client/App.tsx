@@ -1,10 +1,12 @@
 import "./global.css";
+import "./i18n";
 
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ConfirmHost } from "@/components/ConfirmDialog";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // Pages
@@ -26,7 +28,7 @@ const queryClient = new QueryClient();
 
 // Auto-redirect based on auth status
 const AuthRedirect = () => {
-  const userRole = localStorage.getItem("user_role");
+  const userRole = sessionStorage.getItem("user_role");
   
   if (!userRole) {
     return <Navigate to="/login" replace />;
@@ -37,7 +39,7 @@ const AuthRedirect = () => {
 
 // Protected route wrapper
 const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
-  const userRole = localStorage.getItem("user_role");
+  const userRole = sessionStorage.getItem("user_role");
   
   if (!userRole) {
     return <Navigate to="/login" replace />;
@@ -47,7 +49,7 @@ const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
 };
 
 const RoleRoute = ({ roles, element }: { roles: string[]; element: React.ReactNode }) => {
-  const role = localStorage.getItem("user_role");
+  const role = sessionStorage.getItem("user_role");
   if (!role) return <Navigate to="/login" replace />;
   return roles.includes(role) ? element : <Navigate to="/dashboard" replace />;
 };
@@ -57,6 +59,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <ConfirmHost />
       <BrowserRouter>
         <Routes>
           {/* Auth Routes */}

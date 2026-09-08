@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Header from "./layout/Header";
 import Sidebar from "./layout/Sidebar";
 
@@ -14,6 +15,7 @@ export default function PlaceholderPage({
   isAdmin: boolean;
 }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="layout-main">
@@ -36,13 +38,13 @@ export default function PlaceholderPage({
 
               <div className="card-base p-8 bg-blue-50 border-blue-200 max-w-md">
                 <p className="text-body text-[color:var(--color-text-secondary)] mb-4">
-                  此页面的功能模块正在开发中，您可以继续在其他功能区域进行操作。
+                  {t("common.wipHint")}
                 </p>
                 <button
                   onClick={() => navigate("/dashboard")}
                   className="btn-primary w-full"
                 >
-                  返回工作台
+                  {t("common.backToDashboard")}
                 </button>
               </div>
             </div>

@@ -24,6 +24,13 @@ export async function runAnalysisTask(taskId: string) {
   await db.analysisTask.update({ where: { id: taskId }, data: { status: "running", progress: 10, startedAt: new Date(), errorMessage: null } });
   try {
     const subject = task.file.case;
+    // 报告者身份：新建/更新报告的操作者（task 提交人）→ 科室 = 其所属科室、医生 = 其姓名
+    const submitter = await db.user
+      .findUnique({ where: { id: task.submittedById }, select: { department: true, displayName: true } })
+      .catch(() => null);
+    const identity = submitter
+      ? { department: submitter.department ?? null, doctor: submitter.displayName ?? null }
+      : null;
     let taskInput: any = {}; try { taskInput = task.resultJson ? JSON.parse(task.resultJson) : {}; } catch { /* task has no manual input */ }
     const inputPath = taskInput.manualRoiPath || task.file.storedPath;
     const result = await predict(inputPath, `${subject.id}-${task.id}`, { gender: /female|女/i.test(subject.gender) ? "Female" : "Male", height_cm: subject.heightCm, weight_kg: subject.weightKg }, taskInput.landmarks);
@@ -35,9 +42,14 @@ export async function runAnalysisTask(taskId: string) {
       const existing = await tx.report.findFirst({ where: { caseId: subject.id, fileId: task.fileId }, include: { review: true }, orderBy: { version: "desc" } });
       if (existing) {
         // 一个文件一份报告：重新分析时原地更新，不再新增版本
-        let merged = result;
-        try { const prev = JSON.parse(existing.resultJson); if (prev?.clinician) merged = { ...result, clinician: prev.clinician }; } catch { /* 保留新结果 */ }
-        const report = await tx.report.update({ where: { id: existing.id }, data: { taskId, cobbAngle: Number(result.cobb), severity: String(result.severity), modelId: String(result.model_id || "v1.0.0"), resultJson: JSON.stringify(merged), artifactDirectory } });
+        // 科室/医生刷新为本次操作者；诊断意见等 clinician 字段保留
+        let payload = result;
+        try {
+          const prev = JSON.parse(existing.resultJson);
+          const prevClinician = prev && typeof prev.clinician === "object" && prev.clinician ? prev.clinician : null;
+          if (prevClinician || identity) payload = { ...result, clinician: { ...(prevClinician || {}), ...(identity || {}) } };
+        } catch { /* 保留新结果 */ }
+        const report = await tx.report.update({ where: { id: existing.id }, data: { taskId, cobbAngle: Number(result.cobb), severity: String(result.severity), modelId: String(result.model_id || "v1.0.0"), resultJson: JSON.stringify(payload), artifactDirectory } });
         if (existing.review) {
           await tx.reportReview.update({ where: { id: existing.review.id }, data: { status: "under_review", comment: null, reviewedById: null, reviewedAt: null } });
         } else {
@@ -46,7 +58,9 @@ export async function runAnalysisTask(taskId: string) {
         return report;
       }
       const versionAgg = await tx.report.aggregate({ where: { caseId: subject.id }, _max: { version: true } });
-      const report = await tx.report.create({ data: { caseId: subject.id, fileId: task.fileId, taskId, version: (versionAgg._max.version ?? 0) + 1, cobbAngle: Number(result.cobb), severity: String(result.severity), modelId: String(result.model_id || "v1.0.0"), resultJson: JSON.stringify(result), artifactDirectory } });
+      // 新建报告：写入报告者身份（科室/医生）
+      const createPayload = identity ? { ...result, clinician: { ...identity } } : result;
+      const report = await tx.report.create({ data: { caseId: subject.id, fileId: task.fileId, taskId, version: (versionAgg._max.version ?? 0) + 1, cobbAngle: Number(result.cobb), severity: String(result.severity), modelId: String(result.model_id || "v1.0.0"), resultJson: JSON.stringify(createPayload), artifactDirectory } });
       await tx.reportReview.create({ data: { reportId: report.id } });
       return report;
     });

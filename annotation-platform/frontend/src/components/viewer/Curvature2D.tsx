@@ -6,6 +6,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { useSubjectStore } from '../../stores/subjectStore';
 import { getCurvatureImageUrl } from '../../api/subjects';
 import { useCanvasRenderer, dataToPixel, pixelToData, landmarkToDisplay } from '../../hooks/useCanvasRenderer';
+import { SPINE_CONSTRAINT_PAIRS, SPINE_HIDDEN, MIDBACK_PAIR } from '../../constants';
 
 const IMAGE_TIMEOUT_MS = 30_000;
 
@@ -32,9 +33,6 @@ function loadImageWithTimeout(src: string, timeoutMs = IMAGE_TIMEOUT_MS): Promis
 }
 
 const HIT_RADIUS = 20;
-const SPINE_CONSTRAINT_PAIRS = ['neck_root', 'scapular_peaks', 'axilla', 'waist'];
-const SPINE_HIDDEN: Record<number, boolean> = {};
-const MIDBACK_PAIR = ['axilla', 'waist'];  // mid_back P5: A=mid(axilla_L+waist_L), B=mid(axilla_R+waist_R)
 
 interface Props {
   onSwitch3D?: () => void;

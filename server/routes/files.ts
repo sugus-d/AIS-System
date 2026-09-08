@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, mkdirSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync } from "node:fs";
 import { rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import multer from "multer";
@@ -9,7 +9,11 @@ import { canAccessCase, requireRoles } from "../middleware/access";
 
 const router = Router();
 const upload = multer({ dest: path.join(localPaths.dataRoot, "uploads"), limits: { fileSize: Number(process.env.AIS_MAX_UPLOAD_BYTES || 200 * 1024 * 1024) } });
-const present = (file: any) => ({ id: file.id, caseId: file.caseId, fileName: file.originalName, fileSize: file.sizeBytes, scanTime: file.scanTime, uploadTime: file.createdAt, path: file.storedPath, status: file.status, sha256: file.sha256 });
+// kind：scan = 3D 扫描（PLY），xray = X 光影像（JPG/PNG/WebP）
+const kindOf = (file: any) => { const n = String(file.originalName || "").toLowerCase(); return n.endsWith(".ply") ? "scan" : "xray"; };
+const isPly = (name: string) => name.endsWith(".ply");
+const isImage = (name: string) => /\.(jpe?g|png|webp)$/.test(name);
+const present = (file: any) => ({ id: file.id, caseId: file.caseId, fileName: file.originalName, fileSize: file.sizeBytes, scanTime: file.scanTime, uploadTime: file.createdAt, path: file.storedPath, status: file.status, sha256: file.sha256, department: file.department ?? null, doctor: file.doctor ?? null, kind: kindOf(file) });
 async function checksum(filePath: string) { return await new Promise<string>((resolve, reject) => { const hash = createHash("sha256"); createReadStream(filePath).on("data", (chunk) => hash.update(chunk)).on("error", reject).on("end", () => resolve(hash.digest("hex"))); }); }
 
 router.get("/", async (req: any, res) => {
@@ -22,22 +26,39 @@ router.get("/", async (req: any, res) => {
 router.post("/", requireRoles("system_admin", "institution_admin", "operator"), upload.single("file"), async (req: any, res) => {
   const uploaded = req.file;
   const discard = async () => { if (uploaded) await unlink(uploaded.path).catch(() => undefined); };
-  if (!uploaded) return res.status(400).json({ success: false, message: "A PLY file is required." });
-  if (!uploaded.originalname.toLowerCase().endsWith(".ply")) { await discard(); return res.status(422).json({ success: false, message: "Only .ply files are supported." }); }
+  if (!uploaded) return res.status(400).json({ success: false, message: "A file is required." });
+  const originalName = (uploaded.originalname || "").toLowerCase();
+  if (!isPly(originalName) && !isImage(originalName)) { await discard(); return res.status(422).json({ success: false, message: "仅支持 .ply 扫描文件或 .jpg/.png/.webp 影像。" }); }
   const caseId = typeof req.body.caseId === "string" ? req.body.caseId : "";
   const subject = await db.case.findUnique({ where: { id: caseId } });
   if (!subject || !canAccessCase(req.user, subject)) { await discard(); return res.status(404).json({ success: false, message: "Case not found." }); }
-  const directory = path.join(localPaths.scans, caseId); mkdirSync(directory, { recursive: true });
-  const id = randomUUID(); const destination = path.join(directory, `${id}.ply`);
+  // scan → scans/<caseId>/<id>.ply；xray → scans/<caseId>/xray/<id>.<ext>
+  const directory = isPly(originalName) ? path.join(localPaths.scans, caseId) : path.join(localPaths.scans, caseId, "xray");
+  mkdirSync(directory, { recursive: true });
+  const id = randomUUID();
+  const ext = isPly(originalName) ? "ply" : (originalName.match(/\.([^.]+)$/)?.[1] || "png");
+  const destination = path.join(directory, `${id}.${ext}`);
   try {
     const sha256 = await checksum(uploaded.path); await rename(uploaded.path, destination);
-    const file = await db.scanFile.create({ data: { id, caseId, originalName: uploaded.originalname, storedPath: destination, sha256, sizeBytes: uploaded.size, scanTime: req.body.scanTime ? new Date(req.body.scanTime) : null } });
+    // 记录上传者（新建报告者）身份：科室/医生，供分析完成前（待分析阶段）的列表展示
+    let identity: { department: string | null; doctor: string | null } | null = null;
+    if (isPly(originalName)) {
+      const operator = await db.user.findUnique({ where: { id: req.user.id }, select: { department: true, displayName: true } }).catch(() => null);
+      identity = operator ? { department: operator.department ?? null, doctor: operator.displayName ?? null } : null;
+    }
+    const file = await db.scanFile.create({ data: { id, caseId, originalName: uploaded.originalname, storedPath: destination, sha256, sizeBytes: uploaded.size, scanTime: req.body.scanTime ? new Date(req.body.scanTime) : null, department: identity?.department ?? null, doctor: identity?.doctor ?? null } });
     await db.case.update({ where: { id: caseId }, data: { status: "pending_analysis" } });
-    await audit(req.user.id, "upload", "ScanFile", file.id, { caseId, sha256, sizeBytes: file.sizeBytes });
+    await audit(req.user.id, "upload", "ScanFile", file.id, { caseId, sha256, sizeBytes: file.sizeBytes, kind: kindOf(file) });
     return res.status(201).json({ success: true, data: present(file) });
   } catch (error) { await discard(); return res.status(500).json({ success: false, message: error instanceof Error ? error.message : "File storage failed." }); }
 });
-router.delete("/:id", requireRoles("system_admin", "institution_admin", "operator"), async (req: any, res) => {
+router.get("/:id/download", async (req: any, res) => {
+  const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });
+  if (!file || !canAccessCase(req.user, file.case)) return res.status(404).json({ success: false, message: "File not found." });
+  if (!existsSync(file.storedPath)) return res.status(404).json({ success: false, message: "File content missing." });
+  return res.sendFile(path.resolve(file.storedPath));
+});
+router.delete("/:id", async (req: any, res) => {
   const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });
   if (!file || !canAccessCase(req.user, file.case)) return res.status(404).json({ success: false, message: "File not found." });
   await db.$transaction(async (tx) => {

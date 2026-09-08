@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
 import DataTable, { Column } from "@/components/DataTable";
+import { confirmDialog } from "@/components/ConfirmDialog";
 import api from "@/lib/api";
 
 type UserRecord = {
@@ -24,9 +26,9 @@ type NewUser = {
 };
 
 const roleLabels: Record<UserRecord["role"], string> = {
-  system_admin: "系统管理员",
-  institution_admin: "机构管理员",
-  operator: "临床操作员",
+  system_admin: "enums.roleSystemAdmin",
+  institution_admin: "enums.roleInstitutionAdmin",
+  operator: "enums.roleOperator",
 };
 const initialNewUser: NewUser = {
   username: "",
@@ -65,7 +67,8 @@ const toRecord = (user: any): UserRecord => ({
 });
 
 export default function AdminUsers() {
-  const role = localStorage.getItem("user_role");
+  const { t } = useTranslation();
+  const role = sessionStorage.getItem("user_role");
   const isAdmin =
     role === "admin" || role === "system_admin" || role === "institution_admin";
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -88,7 +91,7 @@ export default function AdminUsers() {
       const result = await api.getUsers({ pageSize: 100 });
       setUsers((result.list || result.data?.list || []).map(toRecord));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "用户列表加载失败");
+      setError(caught instanceof Error ? caught.message : t("users.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -103,24 +106,26 @@ export default function AdminUsers() {
     action: "toggle" | "delete",
     account: string,
   ) => {
-    if (action === "delete" && !window.confirm(`确认删除用户“${account}”吗？`))
-      return;
+    if (action === "delete") {
+      const confirmed = await confirmDialog(t("users.deleteConfirm", { name: account }), { destructive: true });
+      if (!confirmed) return;
+    }
     try {
       setActionId(id);
       setFeedback("");
       if (action === "toggle") {
         await api.toggleUserStatus(id);
-        setFeedback(`已更新 ${account} 的账户状态。`);
+        setFeedback(t("users.statusUpdated", { name: account }));
         await loadUsers();
       }
       if (action === "delete") {
         await api.deleteUser(id);
-        setFeedback(`已删除用户 ${account}。`);
+        setFeedback(t("users.deleted", { name: account }));
         await loadUsers();
       }
     } catch (caught) {
       setFeedback(
-        caught instanceof Error ? caught.message : "操作失败，请重试。",
+        caught instanceof Error ? caught.message : t("users.opFailed"),
       );
     } finally {
       setActionId(null);
@@ -128,11 +133,11 @@ export default function AdminUsers() {
   };
   const createUser = async () => {
     if (!/^[\p{L}\p{N}._-]{2,32}$/u.test(newUser.username.trim())) {
-      setCreateError("用户名需为 2-32 位字母、数字或 . _ -，且不能包含空格。");
+      setCreateError(t("users.usernameInvalid"));
       return;
     }
     if (!newUser.name.trim()) {
-      setCreateError("请填写姓名。");
+      setCreateError(t("users.nameRequired"));
       return;
     }
     try {
@@ -141,11 +146,11 @@ export default function AdminUsers() {
       const createdUser = await api.createUser({ ...newUser, username: newUser.username.trim() });
       setCreateOpen(false);
       setNewUser(initialNewUser);
-      setFeedback(`已创建用户 ${createdUser.username}。`);
+      setFeedback(t("users.created", { name: createdUser.username }));
       await loadUsers();
     } catch (caught) {
       setCreateError(
-        caught instanceof Error ? caught.message : "创建用户失败。",
+        caught instanceof Error ? caught.message : t("users.createFailed"),
       );
     } finally {
       setActionId(null);
@@ -169,15 +174,15 @@ export default function AdminUsers() {
     if (!editing) return;
     const username = editForm.username.trim();
     if (!/^[\p{L}\p{N}._-]{2,32}$/u.test(username)) {
-      setEditError("用户名需为 2-32 位字母、数字或 . _ -，且不能包含空格。");
+      setEditError(t("users.usernameInvalid"));
       return;
     }
     if (!editForm.name.trim()) {
-      setEditError("请填写姓名。");
+      setEditError(t("users.nameRequired"));
       return;
     }
     if (editForm.password && editForm.password.length < 12) {
-      setEditError("新密码至少需要 12 位。");
+      setEditError(t("users.pwdMinLength"));
       return;
     }
     try {
@@ -193,10 +198,10 @@ export default function AdminUsers() {
       await api.updateUser(editing.id, payload);
       setEditOpen(false);
       setEditing(null);
-      setFeedback(`已更新用户 ${username}。`);
+      setFeedback(t("users.updated", { name: username }));
       await loadUsers();
     } catch (caught) {
-      setEditError(caught instanceof Error ? caught.message : "保存失败。");
+      setEditError(caught instanceof Error ? caught.message : t("users.saveFailed"));
     } finally {
       setActionId(null);
     }
@@ -207,7 +212,7 @@ export default function AdminUsers() {
   const columns: Column<UserRecord>[] = [
     {
       key: "account",
-      label: "账户",
+      label: t("users.colAccount"),
       width: "170px",
       sortable: true,
       render: (value, row) => (
@@ -215,33 +220,33 @@ export default function AdminUsers() {
           <p className="font-semibold text-[color:var(--color-primary)]">
             {value}
           </p>
-          <p className="text-helper mt-0.5">{row.name}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{row.name}</p>
         </div>
       ),
     },
     {
       key: "role",
-      label: "角色",
+      label: t("users.colRole"),
       width: "120px",
-      render: (value) => roleLabels[value as UserRecord["role"]] || value,
+      render: (value) => roleLabels[value as UserRecord["role"]] ? t(roleLabels[value as UserRecord["role"]]) : value,
     },
-    { key: "department", label: "科室/岗位", width: "140px" },
-    { key: "createTime", label: "创建时间", width: "165px", sortable: true },
-    { key: "lastLogin", label: "最后登录", width: "165px", sortable: true },
+    { key: "department", label: t("users.colDepartment"), width: "140px" },
+    { key: "createTime", label: t("users.colCreateTime"), width: "165px", sortable: true },
+    { key: "lastLogin", label: t("users.colLastLogin"), width: "165px", sortable: true },
     {
       key: "status",
-      label: "状态",
+      label: t("users.colStatus"),
       width: "90px",
       align: "center",
       render: (value) => (
         <span className={value === "active" ? "tag-success" : "tag-warning"}>
-          {value === "active" ? "正常" : "已禁用"}
+          {value === "active" ? t("users.statusActive") : t("users.statusDisabled")}
         </span>
       ),
     },
     {
       key: "id",
-      label: "操作",
+      label: t("users.colOps"),
       width: "380px",
       align: "right",
       render: (_value, row) => (
@@ -254,7 +259,7 @@ export default function AdminUsers() {
             disabled={actionId === row.id}
             onClick={() => openEdit(row)}
           >
-            编辑
+            {t("users.edit")}
           </button>
           {isSystemAdmin && (
             <button
@@ -262,7 +267,7 @@ export default function AdminUsers() {
               disabled={actionId === row.id}
               onClick={() => void runAction(row.id, "toggle", row.account)}
             >
-              {row.status === "active" ? "禁用" : "启用"}
+              {row.status === "active" ? t("users.disable") : t("users.enable")}
             </button>
           )}
           {isSystemAdmin && (
@@ -271,7 +276,7 @@ export default function AdminUsers() {
               disabled={actionId === row.id}
               onClick={() => void runAction(row.id, "delete", row.account)}
             >
-              删除
+              {t("users.delete")}
             </button>
           )}
         </div>
@@ -289,12 +294,12 @@ export default function AdminUsers() {
         <div className="content-wrapper space-y-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-helper uppercase tracking-wider text-[color:var(--color-primary)] mb-2">
-                Accounts
+              <p className="text-sm text-muted-foreground uppercase tracking-wider text-[color:var(--color-primary)] mb-2">
+                {t("users.eyebrow")}
               </p>
-              <h1 className="text-page-title">用户管理</h1>
-              <p className="text-body mt-2">
-                管理用户账户、角色、科室和账户状态。
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground">{t("users.title")}</h1>
+              <p className="text-sm mt-2">
+                {t("users.subtitle")}
               </p>
             </div>
             <button
@@ -304,43 +309,43 @@ export default function AdminUsers() {
                 setCreateOpen(true);
               }}
             >
-              新增用户
+              {t("users.addUser")}
             </button>
           </div>
           {feedback && (
             <div className="border border-blue-200 bg-blue-50 px-4 py-3 rounded-card flex items-center justify-between gap-4">
-              <p className="text-body text-[color:var(--color-primary)]">
+              <p className="text-sm text-[color:var(--color-primary)]">
                 {feedback}
               </p>
               <button className="btn-text" onClick={() => setFeedback("")}>
-                关闭
+                {t("users.close")}
               </button>
             </div>
           )}
           {error ? (
             <section className="card-base p-8 text-center">
-              <p className="text-body text-[color:var(--color-error)] mb-4">
+              <p className="text-sm text-[color:var(--color-error)] mb-4">
                 {error}
               </p>
               <button
                 className="btn-secondary"
                 onClick={() => void loadUsers()}
               >
-                重新加载
+                {t("users.reload")}
               </button>
             </section>
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <p className="text-helper">
-                  共 {users.length} 位用户
+                <p className="text-sm text-muted-foreground">
+                  {t("users.totalUsers", { count: users.length })}
                 </p>
                 <button
                   className="btn-text"
                   onClick={() => void loadUsers()}
                   disabled={loading}
                 >
-                  刷新列表
+                  {t("users.refresh")}
                 </button>
               </div>
               <DataTable<UserRecord>
@@ -349,7 +354,7 @@ export default function AdminUsers() {
                 rowKey="id"
                 pageSize={10}
                 loading={loading}
-                emptyMessage="暂无用户数据"
+                emptyMessage={t("users.empty")}
               />
             </>
           )}
@@ -365,31 +370,31 @@ export default function AdminUsers() {
           <div className="card-base w-full max-w-xl p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 id="create-user-title" className="text-card-title">
-                  新增用户
+                <h2 id="create-user-title" className="text-lg font-semibold text-foreground">
+                  {t("users.createTitle")}
                 </h2>
-                <p className="text-helper mt-1">
-                  请设置一个易记的用户名（2-32 位字母、数字或 . _ -），创建后使用该用户名和初始密码登录。
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t("users.createHint")}
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               <Field
-                label="用户名（登录账号）"
+                label={t("users.usernameLabel")}
                 value={newUser.username}
                 onChange={(value) =>
                   setNewUser((prev) => ({ ...prev, username: value }))
                 }
               />
               <Field
-                label="姓名"
+                label={t("users.name")}
                 value={newUser.name}
                 onChange={(value) =>
                   setNewUser((prev) => ({ ...prev, name: value }))
                 }
               />
-              <label className="block text-body font-semibold">
-                角色
+              <label className="block text-sm font-semibold">
+                {t("users.role")}
                 <select
                   className="input-base mt-2 font-normal"
                   value={newUser.role}
@@ -402,13 +407,13 @@ export default function AdminUsers() {
                 >
                   {Object.entries(roleLabels).map(([value, label]) => (
                     <option key={value} value={value}>
-                      {label}
+                      {t(label)}
                     </option>
                   ))}
                 </select>
               </label>
               <Field
-                label="科室"
+                label={t("users.department")}
                 value={newUser.department}
                 onChange={(value) =>
                   setNewUser((prev) => ({ ...prev, department: value }))
@@ -416,7 +421,7 @@ export default function AdminUsers() {
               />
               <div className="md:col-span-2">
                 <Field
-                  label="初始密码"
+                  label={t("users.initialPwd")}
                   value={newUser.password}
                   onChange={(value) =>
                     setNewUser((prev) => ({ ...prev, password: value }))
@@ -426,7 +431,7 @@ export default function AdminUsers() {
               </div>
             </div>
             {createError && (
-              <p className="text-helper text-[color:var(--color-error)] mt-4">
+              <p className="text-sm text-muted-foreground text-[color:var(--color-error)] mt-4">
                 {createError}
               </p>
             )}
@@ -436,14 +441,14 @@ export default function AdminUsers() {
                 disabled={actionId === "create"}
                 onClick={() => setCreateOpen(false)}
               >
-                取消
+                {t("common.cancel")}
               </button>
               <button
                 className="btn-primary"
                 disabled={actionId === "create"}
                 onClick={() => void createUser()}
               >
-                {actionId === "create" ? "创建中..." : "创建用户"}
+                {actionId === "create" ? t("users.creating") : t("users.create")}
               </button>
             </div>
           </div>
@@ -459,31 +464,31 @@ export default function AdminUsers() {
           <div className="card-base w-full max-w-xl p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 id="edit-user-title" className="text-card-title">
-                  编辑用户
+                <h2 id="edit-user-title" className="text-lg font-semibold text-foreground">
+                  {t("users.editTitle")}
                 </h2>
-                <p className="text-helper mt-1">
-                  修改用户名、姓名、角色或科室。
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t("users.editHint")}
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               <Field
-                label="用户名（登录账号）"
+                label={t("users.usernameLabel")}
                 value={editForm.username}
                 onChange={(value) =>
                   setEditForm((prev) => ({ ...prev, username: value }))
                 }
               />
               <Field
-                label="姓名"
+                label={t("users.name")}
                 value={editForm.name}
                 onChange={(value) =>
                   setEditForm((prev) => ({ ...prev, name: value }))
                 }
               />
-              <label className="block text-body font-semibold">
-                角色
+              <label className="block text-sm font-semibold">
+                {t("users.role")}
                 <select
                   className="input-base mt-2 font-normal"
                   value={editForm.role}
@@ -497,18 +502,18 @@ export default function AdminUsers() {
                 >
                   {Object.entries(roleLabels).map(([value, label]) => (
                     <option key={value} value={value}>
-                      {label}
+                      {t(label)}
                     </option>
                   ))}
                 </select>
                 {!isSystemAdmin && (
-                  <p className="text-helper mt-1 font-normal">
-                    仅系统管理员可修改角色。
+                  <p className="text-sm text-muted-foreground mt-1 font-normal">
+                    {t("users.roleLockedHint")}
                   </p>
                 )}
               </label>
               <Field
-                label="科室"
+                label={t("users.department")}
                 value={editForm.department}
                 onChange={(value) =>
                   setEditForm((prev) => ({ ...prev, department: value }))
@@ -516,7 +521,7 @@ export default function AdminUsers() {
               />
               <div className="md:col-span-2">
                 <Field
-                  label="修改密码（留空则不修改）"
+                  label={t("users.pwdLabel")}
                   value={editForm.password}
                   onChange={(value) =>
                     setEditForm((prev) => ({ ...prev, password: value }))
@@ -526,7 +531,7 @@ export default function AdminUsers() {
               </div>
             </div>
             {editError && (
-              <p className="text-helper text-[color:var(--color-error)] mt-4">
+              <p className="text-sm text-muted-foreground text-[color:var(--color-error)] mt-4">
                 {editError}
               </p>
             )}
@@ -539,14 +544,14 @@ export default function AdminUsers() {
                   setEditing(null);
                 }}
               >
-                取消
+                {t("common.cancel")}
               </button>
               <button
                 className="btn-primary"
                 disabled={actionId === editing.id}
                 onClick={() => void saveEdit()}
               >
-                {actionId === editing.id ? "保存中..." : "保存"}
+                {actionId === editing.id ? t("users.saving") : t("users.save")}
               </button>
             </div>
           </div>
@@ -568,7 +573,7 @@ function Field({
   type?: string;
 }) {
   return (
-    <label className="block text-body font-semibold">
+    <label className="block text-sm font-semibold">
       {label}
       <input
         className="input-base mt-2 font-normal"

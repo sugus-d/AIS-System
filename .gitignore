@@ -13,6 +13,7 @@ annotation-platform/frontend/dist
 annotation-platform/.venv
 dist
 dist-ssr
+dist-test
 *.local
 
 # Editor directories and files
@@ -38,6 +39,7 @@ data/
 release/
 runtime/python/
 deployment/initial-admin.json
+deployment/initial-admin.json.consumed
 
 # Python virtualenvs
 .venv/

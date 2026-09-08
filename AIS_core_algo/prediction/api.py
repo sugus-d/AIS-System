@@ -34,6 +34,7 @@ from prediction.predict import (
     PREDICT_ROOT,
     run_landmarks,
 )
+from prediction.render import render_landmarks_image
 from prediction.schemas import (
     _APP_DESCRIPTION,
     _LANDMARKS_DESCRIPTION,
@@ -245,3 +246,56 @@ def predict_route(
     if not manual_mode:
         result["landmarks"] = _read_json_file(out_dir / "landmarks.json")
     return result
+
+
+@app.post(
+    "/api/render",
+    tags=["render"],
+    summary="轻量渲染：ROI + landmarks → landmarks.png（不加载模型/特征）",
+    description="渲染标注连线图，供标注完成后即时刷新报告页标注图。仅做 mesh 度量 + "
+    "标注连线图渲染，不加载模型、不读 features.csv / prediction.json、不生成 waterfall。",
+    responses=_ERROR_RESPONSES,
+)
+def render_route(
+    file: Annotated[
+        UploadFile,
+        File(description="ROI 网格 PLY（编辑后 ROI 或算法 roi.ply）"),
+    ],
+    landmarks: Annotated[
+        str,
+        Form(description="完整扁平 18 键 landmarks JSON 字符串"),
+    ],
+    subject_id: Annotated[
+        str | None,
+        Form(description="[可选] subject ID（输出目录名，用于原地覆盖当前报告的标注图）"),
+    ] = None,
+) -> dict:
+    """轻量渲染：ROI + landmarks → landmarks.png。landmarks 必填（完整 18 键）。"""
+    if not (file.filename or "").lower().endswith(".ply"):
+        raise HTTPException(status_code=422, detail="仅支持 .ply 文件")
+
+    try:
+        landmarks_data = json.loads(landmarks)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="landmarks 不是合法 JSON") from exc
+    missing_landmarks = _validate_landmarks(landmarks_data)
+    if missing_landmarks:
+        raise HTTPException(status_code=422, detail=f"landmarks 不完整，缺少: {missing_landmarks}")
+
+    subject = _sanitize_subject_id(subject_id, Path(file.filename or "upload").stem)
+    out_dir = PREDICT_ROOT / subject
+    ply_path = out_dir / "input" / "roi.ply"
+    _save_upload(file, ply_path)
+
+    try:
+        out_path = render_landmarks_image(str(ply_path), landmarks_data, out_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"render 管线异常 {subject}: {exc}")
+        raise HTTPException(status_code=500, detail="标注图渲染失败") from exc
+
+    return {
+        "subject_id": subject,
+        "outputs": {"landmarks": f"/reports/{subject}/report/{out_path.name}"},
+    }

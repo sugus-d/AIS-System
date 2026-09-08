@@ -29,7 +29,7 @@ function AnnotationGuard({ children }: { children: React.ReactNode }) {
   if (state === 'denied') return <Box sx={{ height: '100vh', display: 'grid', placeItems: 'center', bgcolor: 'background.default', color: 'error.main' }}>无有效授权，无法打开标注工具。</Box>;
   return <>
     {children}
-    {returnUrl && <Box component="button" onClick={() => window.location.assign(returnUrl)} sx={{ position: 'fixed', right: 20, top: 16, zIndex: 2000, border: 1, borderColor: 'divider', borderRadius: 1, px: 1.5, py: 0.75, bgcolor: 'background.paper', color: 'text.primary', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}>返回报告详情</Box>}
+    {returnUrl && <Box component="button" onClick={() => { const sep = returnUrl.includes("?") ? "&" : "?"; window.location.assign(`${returnUrl}${sep}annotationUpdated=1`); }} sx={{ position: 'fixed', right: 20, top: 16, zIndex: 2000, border: 1, borderColor: 'divider', borderRadius: 1, px: 1.5, py: 0.75, bgcolor: 'background.paper', color: 'text.primary', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}>返回报告详情</Box>}
   </>;
 }
 

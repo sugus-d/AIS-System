@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import { ChildProcess, spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import {
@@ -7,6 +7,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -15,6 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 
 const isDev = !app.isPackaged;
@@ -86,17 +88,29 @@ function applyPendingRestore() {
   }
 }
 
-function reserveLoopbackPort() {
+// 固定 node 端口：localStorage 按 origin（协议+主机+端口）隔离，若端口每次重启随机，
+// 记住密码 / 登录态会在重启后全部丢失。优先固定端口，被占用时才回退随机端口。
+const NODE_PORT = 7266;
+
+function reserveLoopbackPort(preferred?: number) {
   return new Promise<number>((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close((error) => {
-        if (error || !address || typeof address === "string") reject(error || new Error("Unable to reserve a local port."));
-        else resolve(address.port);
+    const tryListen = (port: number, onFree: (port: number) => void, onBusy?: () => void) => {
+      const server = net.createServer();
+      server.once("error", (err) => {
+        server.close();
+        if ((err as NodeJS.ErrnoException)?.code === "EADDRINUSE" && onBusy) onBusy();
+        else reject(err);
       });
-    });
+      server.listen(port, "127.0.0.1", () => {
+        const address = server.address();
+        server.close((error) => {
+          if (error || !address || typeof address === "string") reject(error || new Error("Unable to reserve a local port."));
+          else onFree(address.port);
+        });
+      });
+    };
+    if (preferred) tryListen(preferred, resolve, () => tryListen(0, resolve));
+    else tryListen(0, resolve);
   });
 }
 
@@ -152,7 +166,7 @@ async function bootServices() {
   desktopLog("Starting local services.");
   applyPendingRestore();
   const [nodePort, algorithmPort, annotationPort] = await Promise.all([
-    reserveLoopbackPort(),
+    reserveLoopbackPort(NODE_PORT),
     reserveLoopbackPort(),
     reserveLoopbackPort(),
   ]);
@@ -222,12 +236,14 @@ async function exportDiagnostics() {
 }
 
 async function createWindow(urls: Awaited<ReturnType<typeof bootServices>>) {
+  Menu.setApplicationMenu(null); // 去掉窗口顶部系统菜单栏
   const serviceHeader = { "x-ais-service-token": urls.serviceToken };
-  await Promise.all([
-    waitForService(`${urls.nodeBaseUrl}/api/ping`, "Business API"),
+  // 仅等业务 API（node 服务，约 0.3s）即显示窗口；算法/标注服务在后台继续启动，避免启动白屏等待
+  await waitForService(`${urls.nodeBaseUrl}/api/ping`, "Business API");
+  void Promise.all([
     waitForService(`http://127.0.0.1:${urls.algorithmPort}/health`, "AIS algorithm API", serviceHeader),
     waitForService(`http://127.0.0.1:${urls.annotationPort}/api/health`, "Annotation API"),
-  ]);
+  ]).catch((error) => desktopLog(`Background service health check failed: ${error instanceof Error ? error.message : String(error)}`));
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -244,7 +260,22 @@ async function createWindow(urls: Awaited<ReturnType<typeof bootServices>>) {
   await window.loadURL(isDev ? "http://127.0.0.1:8080" : urls.nodeBaseUrl);
 }
 
+const SPLASH_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;height:100%;}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;font-family:'Microsoft YaHei','PingFang SC',sans-serif;color:#2563eb;background:#f8fafc;}
+  .spin{width:42px;height:42px;border:4px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:ais-spin .8s linear infinite;}
+  .text{font-size:15px;letter-spacing:1px;}
+  @keyframes ais-spin{to{transform:rotate(360deg)}}
+</style></head><body><div class="spin"></div><div class="text">AIS 筛查系统正在启动…</div></body></html>`;
+
 app.whenReady().then(async () => {
+  const splash = new BrowserWindow({
+    width: 420, height: 260, frame: false, resizable: false, movable: true, center: true,
+    alwaysOnTop: true, show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(SPLASH_HTML)}`);
+  splash.once("ready-to-show", () => splash.show());
   try {
     const urls = await bootServices();
     await createWindow(urls);
@@ -253,6 +284,8 @@ app.whenReady().then(async () => {
     await stopServices();
     await dialog.showMessageBox({ type: "error", title: "AIS startup failed", message: error instanceof Error ? error.message : "Unknown error" });
     app.quit();
+  } finally {
+    if (!splash.isDestroyed()) splash.close();
   }
 });
 
@@ -270,4 +303,47 @@ ipcMain.handle("app:version", (event) => {
 ipcMain.handle("diagnostics:export", async (event) => {
   if (!event.senderFrame.url.startsWith("http://127.0.0.1") && !isDev) throw new Error("Unauthorized IPC sender.");
   return exportDiagnostics();
+});
+ipcMain.handle("report:save-pdf", async (event, html: string, suggestedName: string, locale?: string) => {
+  if (!event.senderFrame.url.startsWith("http://127.0.0.1") && !isDev) throw new Error("Unauthorized IPC sender.");
+  const parent = BrowserWindow.fromWebContents(event.sender);
+  const printWin = new BrowserWindow({ show: false, width: 900, height: 1200 });
+  // 用临时 HTML 文件加载（data: URL 有大小限制，报告含多张 base64 图片时会导致加载失败）
+  const tmpDir = mkdtempSync(path.join(os.tmpdir(), "ais-pdf-"));
+  const tmpHtml = path.join(tmpDir, "report.html");
+  try {
+    writeFileSync(tmpHtml, String(html || ""), "utf8");
+    await printWin.loadFile(tmpHtml);
+    // 等待报告图片全部加载完成（最多 ~4s），避免 PDF 中出现空白图
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const done = await printWin.webContents
+        .executeJavaScript(`Array.from(document.images).every((img) => img.complete)`)
+        .catch(() => true);
+      if (done) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const pdf = await printWin.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "A4",
+      margins: { marginType: "default" },
+    });
+    const isTw = String(locale || "").toLowerCase().startsWith("zh-tw");
+    const fallbackName = isTw ? "AIS報告" : "AIS报告";
+    const defaultPath = /\.pdf$/i.test(String(suggestedName || "")) ? suggestedName : `${String(suggestedName || fallbackName)}.pdf`;
+    const options = {
+      title: isTw ? "另存為 PDF" : "另存为 PDF",
+      defaultPath,
+      filters: [{ name: isTw ? "PDF 文件" : "PDF 文档", extensions: ["pdf"] }],
+    };
+    const { canceled, filePath } = parent
+      ? await dialog.showSaveDialog(parent, options)
+      : await dialog.showSaveDialog(options);
+    if (canceled || !filePath) return { ok: false, canceled: true };
+    writeFileSync(filePath, pdf);
+    desktopLog(`Report PDF saved: ${filePath}`);
+    return { ok: true, filePath };
+  } finally {
+    printWin.destroy();
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

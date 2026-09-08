@@ -88,7 +88,16 @@ def detect_neck_root_strips(
             "No neck-root candidates after derivative filtering: "
             f"left={len(left_candidates)} right={len(right_candidates)}"
         )
-        raise ValueError("Failed to detect neck root candidates.")
+        # 兜底：候选段可能短于 SavGol 最小拟合点数（_MIN_FIT_POINTS=5），此时
+        # compute_derivatives_from_xy 返回空数组，导数筛选会把该侧候选全部清空。
+        # 对空侧放宽到整条裁剪轮廓重新计算导数并筛选，保证颈根检测对短候选段
+        # /局部过平滑体态不因单侧信号缺失而整体失败。
+        if not left_candidates:
+            left_candidates = _rebuild_candidates_from_full_contour(left_contour, side="left")
+        if not right_candidates:
+            right_candidates = _rebuild_candidates_from_full_contour(right_contour, side="right")
+        if not left_candidates or not right_candidates:
+            raise ValueError("Failed to detect neck root candidates.")
     # WHY：候选点中可能存在多个导数满足条件的点，需要进一步用长轴转角筛选。
     # 颈根在解剖上是窄茎→肩部的过渡区，长轴转角应在 20°~70° 之间（接近垂直的窄茎
     # 段 < 15°，到肩部后 > 80°）。选最接近 55° 的候选作为最优，因为 55° 大致位于
@@ -138,6 +147,30 @@ def _build_angle_candidates(
             )
         )
     return candidates
+
+
+def _rebuild_candidates_from_full_contour(
+    contour: np.ndarray,
+    side: str,
+) -> list[AngleCandidate]:
+    """在整条（已裁剪并平滑的）轮廓上重新计算导数并筛选候选点。
+
+    WHY：候选段可能短于 SavGol 拟合的最小点数（signal_ops._MIN_FIT_POINTS=5），
+    compute_derivatives_from_xy 会返回空数组，使 select_points_by_derivative 清空
+    该侧全部候选。整条裁剪轮廓通常有更多点，导数仍可稳定计算，于是放宽到
+    全轮廓重建候选，交由后续长轴角选择逻辑挑选颈根。
+    """
+    full_x, full_y = normalize_xy(contour)
+    full_d = compute_derivatives_from_xy(full_x, full_y, derv_order=1)
+    if len(full_d) == 0:
+        return []
+    if side == "left":
+        keep = select_points_by_derivative(contour, full_x, full_d, NeckRoot.LEFT_DERIV_THRESHOLD)
+    else:
+        keep = select_points_by_derivative(
+            contour, full_x, full_d, NeckRoot.RIGHT_DERIV_THRESHOLD, keep_greater=False
+        )
+    return _build_angle_candidates(contour, keep)
 
 
 def _select_best_by_long_axis(
@@ -221,6 +254,9 @@ def _find_first_valid_point(
     """
     threshold = NeckRoot.LEFT_DERIV_THRESHOLD if side == "left" else NeckRoot.RIGHT_DERIV_THRESHOLD
     keep_greater = side == "left"
+    if len(x_arr) == 0 or len(d_arr) == 0 or len(x_arr) != len(d_arr):
+        logger.info(f"{side} derivative array empty, skipping {source} scan for neck root")
+        return None
     order = np.argsort(search_pts[:, 1])[::-1]
 
     for idx in order:

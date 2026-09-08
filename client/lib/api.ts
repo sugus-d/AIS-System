@@ -1,4 +1,6 @@
 // API client for the local SQLite-backed service.
+import i18next from "@/i18n";
+import { translateBackendMessage } from "./backendMsg";
 const API_BASE = '/api';
 
 class ApiClient {
@@ -6,19 +8,20 @@ class ApiClient {
 
   setToken(token: string) {
     this.token = token;
-    localStorage.setItem('auth_token', token);
+    // 登录态使用 sessionStorage：关闭客户端即失效，每次打开都需重新登录
+    sessionStorage.setItem('auth_token', token);
   }
 
   getToken(): string | null {
     if (!this.token) {
-      this.token = localStorage.getItem('auth_token');
+      this.token = sessionStorage.getItem('auth_token');
     }
     return this.token;
   }
 
   clearToken() {
     this.token = null;
-    localStorage.removeItem('auth_token');
+    sessionStorage.removeItem('auth_token');
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -32,19 +35,25 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    } catch {
+      // 网络层异常（服务未启动/端口未就绪等）统一为友好提示
+      throw new Error(i18next.t("api.networkError"));
+    }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: '请求失败' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
+      const error = await response.json().catch(() => ({ message: i18next.t("api.requestFailed") }));
+      throw new Error(translateBackendMessage(error.message || `HTTP ${response.status}`));
     }
 
     const result = await response.json();
     if (!result.success) {
-      throw new Error(result.message || '请求失败');
+      throw new Error(translateBackendMessage(result.message || i18next.t("api.requestFailed")));
     }
 
     return result.data;
@@ -137,10 +146,34 @@ class ApiClient {
     form.append('file', data.file);
     if (data.scanTime) form.append('scanTime', data.scanTime);
     const token = this.getToken();
-    const response = await fetch(`${API_BASE}/files`, { method: 'POST', body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    const result = await response.json().catch(() => ({ message: '上传失败' }));
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/files`, { method: 'POST', body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch {
+      throw new Error(i18next.t("api.networkError"));
+    }
+    const result = await response.json().catch(() => ({ message: i18next.t("api.uploadFailed") }));
     if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
     return result.data;
+  }
+
+  // 下载文件原始内容（3D PLY 查看用）
+  async downloadFile(fileId: string): Promise<ArrayBuffer> {
+    const token = this.getToken();
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/files/${fileId}/download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch {
+      throw new Error(i18next.t("api.networkError"));
+    }
+    if (!response.ok) throw new Error(i18next.t("api.downloadFailed", { status: response.status }));
+    return response.arrayBuffer();
+  }
+
+  // 图片可直接显示的 URL（<img> 无法带 Authorization 头，走 ?token=）
+  fileDownloadUrl(fileId: string): string {
+    const token = this.getToken();
+    return `${API_BASE}/files/${fileId}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
   }
 
   async deleteFile(id: string) {

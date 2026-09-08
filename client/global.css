@@ -4,11 +4,12 @@
 @tailwind utilities;
 @layer base {
   :root {
-    --color-primary:#1E40AF; --color-primary-light:#EFF6FF; --color-secondary:#3B82F6;
+    /* shadcn/ui 蓝色风格：主色 blue-600，边框/正文中性，蓝色体现在主按钮/链接/激活态 */
+    --color-primary:#2563EB; --color-primary-light:#EFF6FF; --color-secondary:#3B82F6;
     --color-success:#16A34A; --color-warning:#D97706; --color-warning-light:#FFFBEB;
     --color-error:#DC2626; --color-neutral:#F8FAFC; --color-neutral-dark:#FFFFFF;
-    --color-text-primary:#1E3A8A; --color-text-secondary:#475569; --color-text-tertiary:#64748B;
-    --color-border:#DBEAFE; --radius:.5rem;
+    --color-text-primary:#0F172A; --color-text-secondary:#475569; --color-text-tertiary:#64748B;
+    --color-border:#E2E8F0; --radius:.5rem;
     /* shadcn/ui semantic tokens (HSL channels) */
     --background: 0 0% 100%; --foreground: 222 47% 11%;
     --card: 0 0% 100%; --card-foreground: 222 47% 11%;
@@ -33,16 +34,17 @@
   button,input,select,textarea { font:inherit; } button { cursor:pointer; } :focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
 }
 @layer components {
-  .card-base { @apply bg-white rounded-card shadow-[0_4px_16px_rgba(30,64,175,0.06)] border border-[color:var(--color-border)]; }
-  .btn-primary { @apply bg-[color:var(--color-primary)] text-white px-4 py-2.5 rounded-btn font-semibold text-body hover:bg-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed; }
-  .btn-secondary { @apply bg-white border border-[color:var(--color-border)] text-[color:var(--color-text-primary)] px-4 py-2.5 rounded-btn font-semibold text-body hover:bg-blue-50 transition-colors disabled:opacity-50; }
-  .btn-danger { @apply bg-[color:var(--color-error)] text-white px-4 py-2.5 rounded-btn font-semibold text-body hover:opacity-90 transition-opacity disabled:opacity-50; }
-  .btn-text { @apply text-[color:var(--color-primary)] bg-transparent border-none font-semibold text-body hover:bg-[color:var(--color-primary-light)] px-2 py-1 rounded transition-colors; }
-  .input-base { @apply w-full px-4 py-2.5 rounded-btn border border-[color:var(--color-border)] bg-white text-body text-[color:var(--color-text-primary)] placeholder:text-[color:var(--color-text-tertiary)] focus:outline-none focus:border-[color:var(--color-primary)] focus:ring-2 focus:ring-blue-100 transition-colors; }
-  .input-error { @apply border-[color:var(--color-error)]; }
-  .tag-warning { @apply inline-block px-3 py-1.5 rounded-full bg-[color:var(--color-warning-light)] text-[color:var(--color-warning)] text-helper font-semibold; }
-  .tag-success { @apply inline-block px-3 py-1.5 rounded-full bg-green-100 text-[color:var(--color-success)] text-helper font-semibold; }
-  .tag-error { @apply inline-block px-3 py-1.5 rounded-full bg-red-100 text-[color:var(--color-error)] text-helper font-semibold; }
+  /* 兼容层：遗留组件类与 shadcn/ui 组件（Card/Button/Input/Badge）视觉对齐 */
+  .card-base { @apply rounded-xl border border-border bg-card text-card-foreground shadow-sm; }
+  .btn-primary { @apply inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50; }
+  .btn-secondary { @apply inline-flex h-10 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50; }
+  .btn-danger { @apply inline-flex h-10 items-center justify-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50; }
+  .btn-text { @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-primary transition-colors hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50; }
+  .input-base { @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50; }
+  .input-error { @apply border-destructive; }
+  .tag-warning { @apply inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700; }
+  .tag-success { @apply inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700; }
+  .tag-error { @apply inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700; }
   .layout-main { @apply flex flex-col min-h-screen bg-[color:var(--color-neutral)]; }
   .layout-sidebar { display:none; }
   .layout-header { @apply h-nav bg-white border-b border-[color:var(--color-border)] sticky top-0 left-0 right-0 w-full z-40 flex items-center; }

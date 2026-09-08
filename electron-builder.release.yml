@@ -21,8 +21,12 @@ asarUnpack:
   - node_modules/better-sqlite3/**
   - node_modules/@prisma/**
   - node_modules/@prisma/adapter-better-sqlite3/**
+# 原生模块在 release 暂存（.release/app）内已是按 Electron ABI 编译好的；
+# electron-builder 的自动重建会误解析到 pnpm store（只读）导致 EPERM，故关闭。
+npmRebuild: false
 compression: maximum
 win:
+  icon: build/icon.png
   target:
     - target: nsis
       arch:

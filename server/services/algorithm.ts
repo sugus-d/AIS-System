@@ -19,4 +19,26 @@ export async function predict(filePath: string, subjectId: string, clinical: Rec
   }
   const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(payload.detail || "AIS 核心算法分析失败"); return payload;
 }
+export async function renderImages(filePath: string, subjectId: string, landmarks: Record<string, unknown>) {
+  const bytes = await readFile(filePath);
+  const body = new FormData();
+  body.append("file", new Blob([bytes]), path.basename(filePath));
+  body.append("subject_id", subjectId);
+  body.append("landmarks", JSON.stringify(landmarks));
+  const serviceToken = process.env.AIS_SERVICE_TOKEN;
+  let response: globalThis.Response;
+  try {
+    response = await fetch(`${algorithmUrl}/api/render`, {
+      method: "POST",
+      body,
+      headers: serviceToken ? { "x-ais-service-token": serviceToken } : undefined,
+      signal: AbortSignal.timeout(Number(process.env.AIS_ALGORITHM_TIMEOUT_MS || 300000)),
+    });
+  } catch {
+    throw new Error("AIS 核心算法服务不可用");
+  }
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || "AIS 标注图渲染失败");
+  return payload;
+}
 export function severityZh(severity: string) { return ({ Normal: "正常", Mild: "轻度", Moderate: "中度", Severe: "重度" } as Record<string, string>)[severity] || severity; }

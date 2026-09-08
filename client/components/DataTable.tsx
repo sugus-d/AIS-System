@@ -1,4 +1,10 @@
 import { useState, useMemo } from "react";
+import { Loader2, Inbox } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 export interface Column<T> {
   key: keyof T;
@@ -21,6 +27,9 @@ interface DataTableProps<T> {
   emptyMessage?: string;
 }
 
+const alignCls = (align?: "left" | "center" | "right") =>
+  align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left";
+
 export default function DataTable<T extends Record<string, any>>({
   columns,
   data,
@@ -30,8 +39,9 @@ export default function DataTable<T extends Record<string, any>>({
   onSelectionChange,
   onRowClick,
   loading = false,
-  emptyMessage = "暂无数据",
+  emptyMessage,
 }: DataTableProps<T>) {
+  const { t } = useTranslation();
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<keyof T | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -61,9 +71,7 @@ export default function DataTable<T extends Record<string, any>>({
         if (bVal === null || bVal === undefined) return -1;
 
         if (typeof aVal === "string") {
-          return sortOrder === "asc"
-            ? aVal.localeCompare(bVal)
-            : bVal.localeCompare(aVal);
+          return sortOrder === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
         }
 
         if (typeof aVal === "number") {
@@ -109,172 +117,114 @@ export default function DataTable<T extends Record<string, any>>({
 
   if (loading) {
     return (
-      <div className="card-base p-12 text-center">
-        <div className="text-4xl mb-4">⏳</div>
-        <p className="text-body text-[color:var(--color-text-secondary)]">
-          加载中...
-        </p>
+      <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-16 text-center shadow-sm">
+        <Loader2 className="mb-3 h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
       </div>
     );
   }
 
   if (processedData.length === 0) {
     return (
-      <div className="card-base p-12 text-center">
-        <div className="text-6xl mb-4">📭</div>
-        <p className="text-body text-[color:var(--color-text-secondary)]">
-          {emptyMessage}
-        </p>
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card py-16 text-center shadow-sm">
+        <Inbox className="mb-3 h-10 w-10 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground">{emptyMessage ?? t("common.none")}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Table */}
-      <div className="card-base overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-[color:var(--color-neutral)] border-b border-[color:var(--color-border)]">
+          <Table className="min-w-[640px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
                 {selectable && (
-                  <th className="w-12 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded"
-                      checked={
-                        paginatedData.length > 0 &&
-                        selectedRows.size === paginatedData.length
-                      }
-                      onChange={handleSelectAll}
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={paginatedData.length > 0 && selectedRows.size === paginatedData.length}
+                      onCheckedChange={handleSelectAll}
                     />
-                  </th>
+                  </TableHead>
                 )}
                 {columns.map((col) => (
-                  <th
+                  <TableHead
                     key={String(col.key)}
                     style={col.width ? { width: col.width } : undefined}
-                    className={`px-6 py-3 text-body font-semibold text-[color:var(--color-text-primary)] ${col.align === "center"
-                        ? "text-center"
-                        : col.align === "right"
-                          ? "text-right"
-                          : "text-left"
-                      } ${col.sortable ? "cursor-pointer hover:bg-[#f0f0f0]" : ""
-                      } ${col.width ? `w-[${col.width}]` : ""}`}
+                    className={cn("font-semibold", alignCls(col.align), col.sortable && "cursor-pointer select-none hover:bg-muted")}
                     onClick={() => col.sortable && handleSort(col.key)}
                   >
-                    <div className={`flex items-center gap-2 ${col.align === "center"
-                        ? "justify-center"
-                        : col.align === "right"
-                          ? "justify-end"
-                          : ""
-                      }`}>
+                    <span className={cn("inline-flex items-center gap-1.5", col.align === "center" ? "justify-center" : col.align === "right" ? "justify-end" : "")}>
                       {col.label}
-                      {col.sortable && sortKey === col.key && (
-                        <span className="text-xs">
-                          {sortOrder === "asc" ? "▲" : "▼"}
-                        </span>
-                      )}
-                    </div>
-                  </th>
+                      {col.sortable && <span className="text-[10px] leading-none opacity-70">{sortKey === col.key ? (sortOrder === "asc" ? "▲" : "▼") : "▲▼"}</span>}
+                    </span>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {paginatedData.map((row, idx) => {
                 const rowKeyValue = row[rowKey];
                 const isSelected = selectedRows.has(rowKeyValue);
 
                 return (
-                  <tr
+                  <TableRow
                     key={String(rowKeyValue)}
-                    className={`border-b border-[color:var(--color-border)] hover:bg-[color:var(--color-neutral)] transition-colors ${isSelected ? "bg-[color:var(--color-primary-light)]" : ""
-                      } ${onRowClick ? "cursor-pointer" : ""}`}
+                    className={cn("hover:bg-muted/50", isSelected && "bg-primary/5", onRowClick && "cursor-pointer")}
                     onClick={() => onRowClick && onRowClick(row)}
                   >
                     {selectable && (
-                      <td className="px-4 py-4">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded"
-                          checked={isSelected}
-                          onChange={() => handleSelectRow(rowKeyValue)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </td>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowKeyValue)} />
+                      </TableCell>
                     )}
                     {columns.map((col) => (
-                      <td
-                        key={String(col.key)}
-                        style={col.width ? { width: col.width } : undefined}
-                        className={`px-6 py-4 text-body text-[color:var(--color-text-secondary)] ${col.align === "center"
-                            ? "text-center"
-                            : col.align === "right"
-                              ? "text-right"
-                              : ""
-                          }`}
-                      >
-                        {col.render
-                          ? col.render(row[col.key], row, idx)
-                          : row[col.key]}
-                      </td>
+                      <TableCell key={String(col.key)} style={col.width ? { width: col.width } : undefined} className={alignCls(col.align)}>
+                        {col.render ? col.render(row[col.key], row, idx) : row[col.key]}
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-helper text-[color:var(--color-text-tertiary)]">
-            共 {processedData.length} 条记录，第 {currentPage}/{totalPages} 页
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {t("common.pageInfo", { total: processedData.length, page: currentPage, pages: totalPages })}
           </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="btn-secondary px-3 py-2 disabled:opacity-50"
-            >
-              上一页
-            </button>
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
+              {t("common.previousPage")}
+            </Button>
             {Array.from({ length: totalPages }).map((_, i) => {
               const pageNum = i + 1;
-              const isNear =
-                Math.abs(pageNum - currentPage) <= 1 ||
-                pageNum === 1 ||
-                pageNum === totalPages;
+              const isNear = Math.abs(pageNum - currentPage) <= 1 || pageNum === 1 || pageNum === totalPages;
 
               if (!isNear && i > 0 && i < totalPages - 1) {
-                if (i === 1) return <span key="dots">...</span>;
+                if (i === 1) return <span key="dots" className="px-1 text-muted-foreground">…</span>;
                 return null;
               }
 
               return (
-                <button
+                <Button
                   key={pageNum}
+                  variant={currentPage === pageNum ? "default" : "outline"}
+                  size="sm"
+                  className={currentPage === pageNum ? "h-9 min-w-9" : "h-9 min-w-9"}
                   onClick={() => setCurrentPage(pageNum)}
-                  className={`px-3 py-2 rounded-btn text-body font-semibold transition-colors ${currentPage === pageNum
-                      ? "bg-[color:var(--color-primary)] text-white"
-                      : "bg-white border border-[color:var(--color-border)] hover:bg-[color:var(--color-neutral)]"
-                    }`}
                 >
                   {pageNum}
-                </button>
+                </Button>
               );
             })}
-            <button
-              onClick={() =>
-                setCurrentPage(Math.min(totalPages, currentPage + 1))
-              }
-              disabled={currentPage === totalPages}
-              className="btn-secondary px-3 py-2 disabled:opacity-50"
-            >
-              下一页
-            </button>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}>
+              {t("common.nextPage")}
+            </Button>
           </div>
         </div>
       )}

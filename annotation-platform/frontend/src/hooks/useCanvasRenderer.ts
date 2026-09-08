@@ -1,6 +1,7 @@
 // src/hooks/useCanvasRenderer.ts
 import { useCallback } from 'react';
 import type { Landmarks, Mapping } from '../types';
+import { SPINE_CONSTRAINT_PAIRS, SPINE_HIDDEN } from '../constants';
 
 const COLORS: Record<string, string> = {
   neck_root: '#00FFFF', shoulder_transition: '#FF4444',
@@ -11,7 +12,6 @@ const ZH: Record<string, string> = {
   neck_root: '颈根', shoulder_transition: '肩臂转点', scapular_peaks: '肩胛峰',
   axilla: '腋窝', waist: '腰部', waist_lower: '腰下缘', spine_points: '脊柱',
 };
-const SPINE_HIDDEN: Record<number, boolean> = {};
 const MARKER_RADIUS = 8;
 
 function getPt(pt: number[] | null | undefined): { x: number; y: number } | null {
@@ -114,7 +114,6 @@ export function useCanvasRenderer(
     }
 
     // Draw L/R connection line during drag
-    const SPINE_CONSTRAINT_PAIRS = ['neck_root', 'scapular_peaks', 'axilla', 'waist'];
     if (dragTarget) {
       const { name, index } = dragTarget;
       if (name === "spine_points" && index === 5) {

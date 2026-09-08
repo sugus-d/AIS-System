@@ -42,6 +42,8 @@ export type ScanFileMinAggregateOutputType = {
   sha256: string | null
   sizeBytes: number | null
   scanTime: Date | null
+  department: string | null
+  doctor: string | null
   status: string | null
   createdAt: Date | null
 }
@@ -54,6 +56,8 @@ export type ScanFileMaxAggregateOutputType = {
   sha256: string | null
   sizeBytes: number | null
   scanTime: Date | null
+  department: string | null
+  doctor: string | null
   status: string | null
   createdAt: Date | null
 }
@@ -66,6 +70,8 @@ export type ScanFileCountAggregateOutputType = {
   sha256: number
   sizeBytes: number
   scanTime: number
+  department: number
+  doctor: number
   status: number
   createdAt: number
   _all: number
@@ -88,6 +94,8 @@ export type ScanFileMinAggregateInputType = {
   sha256?: true
   sizeBytes?: true
   scanTime?: true
+  department?: true
+  doctor?: true
   status?: true
   createdAt?: true
 }
@@ -100,6 +108,8 @@ export type ScanFileMaxAggregateInputType = {
   sha256?: true
   sizeBytes?: true
   scanTime?: true
+  department?: true
+  doctor?: true
   status?: true
   createdAt?: true
 }
@@ -112,6 +122,8 @@ export type ScanFileCountAggregateInputType = {
   sha256?: true
   sizeBytes?: true
   scanTime?: true
+  department?: true
+  doctor?: true
   status?: true
   createdAt?: true
   _all?: true
@@ -211,6 +223,8 @@ export type ScanFileGroupByOutputType = {
   sha256: string
   sizeBytes: number
   scanTime: Date | null
+  department: string | null
+  doctor: string | null
   status: string
   createdAt: Date
   _count: ScanFileCountAggregateOutputType | null
@@ -246,6 +260,8 @@ export type ScanFileWhereInput = {
   sha256?: Prisma.StringFilter<"ScanFile"> | string
   sizeBytes?: Prisma.IntFilter<"ScanFile"> | number
   scanTime?: Prisma.DateTimeNullableFilter<"ScanFile"> | Date | string | null
+  department?: Prisma.StringNullableFilter<"ScanFile"> | string | null
+  doctor?: Prisma.StringNullableFilter<"ScanFile"> | string | null
   status?: Prisma.StringFilter<"ScanFile"> | string
   createdAt?: Prisma.DateTimeFilter<"ScanFile"> | Date | string
   case?: Prisma.XOR<Prisma.CaseScalarRelationFilter, Prisma.CaseWhereInput>
@@ -261,6 +277,8 @@ export type ScanFileOrderByWithRelationInput = {
   sha256?: Prisma.SortOrder
   sizeBytes?: Prisma.SortOrder
   scanTime?: Prisma.SortOrderInput | Prisma.SortOrder
+  department?: Prisma.SortOrderInput | Prisma.SortOrder
+  doctor?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   case?: Prisma.CaseOrderByWithRelationInput
@@ -279,6 +297,8 @@ export type ScanFileWhereUniqueInput = Prisma.AtLeast<{
   sha256?: Prisma.StringFilter<"ScanFile"> | string
   sizeBytes?: Prisma.IntFilter<"ScanFile"> | number
   scanTime?: Prisma.DateTimeNullableFilter<"ScanFile"> | Date | string | null
+  department?: Prisma.StringNullableFilter<"ScanFile"> | string | null
+  doctor?: Prisma.StringNullableFilter<"ScanFile"> | string | null
   status?: Prisma.StringFilter<"ScanFile"> | string
   createdAt?: Prisma.DateTimeFilter<"ScanFile"> | Date | string
   case?: Prisma.XOR<Prisma.CaseScalarRelationFilter, Prisma.CaseWhereInput>
@@ -294,6 +314,8 @@ export type ScanFileOrderByWithAggregationInput = {
   sha256?: Prisma.SortOrder
   sizeBytes?: Prisma.SortOrder
   scanTime?: Prisma.SortOrderInput | Prisma.SortOrder
+  department?: Prisma.SortOrderInput | Prisma.SortOrder
+  doctor?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.ScanFileCountOrderByAggregateInput
@@ -314,6 +336,8 @@ export type ScanFileScalarWhereWithAggregatesInput = {
   sha256?: Prisma.StringWithAggregatesFilter<"ScanFile"> | string
   sizeBytes?: Prisma.IntWithAggregatesFilter<"ScanFile"> | number
   scanTime?: Prisma.DateTimeNullableWithAggregatesFilter<"ScanFile"> | Date | string | null
+  department?: Prisma.StringNullableWithAggregatesFilter<"ScanFile"> | string | null
+  doctor?: Prisma.StringNullableWithAggregatesFilter<"ScanFile"> | string | null
   status?: Prisma.StringWithAggregatesFilter<"ScanFile"> | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"ScanFile"> | Date | string
 }
@@ -325,6 +349,8 @@ export type ScanFileCreateInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   case: Prisma.CaseCreateNestedOneWithoutFilesInput
@@ -340,6 +366,8 @@ export type ScanFileUncheckedCreateInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   tasks?: Prisma.AnalysisTaskUncheckedCreateNestedManyWithoutFileInput
@@ -353,6 +381,8 @@ export type ScanFileUpdateInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   case?: Prisma.CaseUpdateOneRequiredWithoutFilesNestedInput
@@ -368,6 +398,8 @@ export type ScanFileUncheckedUpdateInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   tasks?: Prisma.AnalysisTaskUncheckedUpdateManyWithoutFileNestedInput
@@ -382,6 +414,8 @@ export type ScanFileCreateManyInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
 }
@@ -393,6 +427,8 @@ export type ScanFileUpdateManyMutationInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -405,6 +441,8 @@ export type ScanFileUncheckedUpdateManyInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -427,6 +465,8 @@ export type ScanFileCountOrderByAggregateInput = {
   sha256?: Prisma.SortOrder
   sizeBytes?: Prisma.SortOrder
   scanTime?: Prisma.SortOrder
+  department?: Prisma.SortOrder
+  doctor?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
@@ -443,6 +483,8 @@ export type ScanFileMaxOrderByAggregateInput = {
   sha256?: Prisma.SortOrder
   sizeBytes?: Prisma.SortOrder
   scanTime?: Prisma.SortOrder
+  department?: Prisma.SortOrder
+  doctor?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
@@ -455,6 +497,8 @@ export type ScanFileMinOrderByAggregateInput = {
   sha256?: Prisma.SortOrder
   sizeBytes?: Prisma.SortOrder
   scanTime?: Prisma.SortOrder
+  department?: Prisma.SortOrder
+  doctor?: Prisma.SortOrder
   status?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
@@ -553,6 +597,8 @@ export type ScanFileCreateWithoutCaseInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   tasks?: Prisma.AnalysisTaskCreateNestedManyWithoutFileInput
@@ -566,6 +612,8 @@ export type ScanFileUncheckedCreateWithoutCaseInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   tasks?: Prisma.AnalysisTaskUncheckedCreateNestedManyWithoutFileInput
@@ -608,6 +656,8 @@ export type ScanFileScalarWhereInput = {
   sha256?: Prisma.StringFilter<"ScanFile"> | string
   sizeBytes?: Prisma.IntFilter<"ScanFile"> | number
   scanTime?: Prisma.DateTimeNullableFilter<"ScanFile"> | Date | string | null
+  department?: Prisma.StringNullableFilter<"ScanFile"> | string | null
+  doctor?: Prisma.StringNullableFilter<"ScanFile"> | string | null
   status?: Prisma.StringFilter<"ScanFile"> | string
   createdAt?: Prisma.DateTimeFilter<"ScanFile"> | Date | string
 }
@@ -619,6 +669,8 @@ export type ScanFileCreateWithoutTasksInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   case: Prisma.CaseCreateNestedOneWithoutFilesInput
@@ -633,6 +685,8 @@ export type ScanFileUncheckedCreateWithoutTasksInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   reports?: Prisma.ReportUncheckedCreateNestedManyWithoutFileInput
@@ -661,6 +715,8 @@ export type ScanFileUpdateWithoutTasksInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   case?: Prisma.CaseUpdateOneRequiredWithoutFilesNestedInput
@@ -675,6 +731,8 @@ export type ScanFileUncheckedUpdateWithoutTasksInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reports?: Prisma.ReportUncheckedUpdateManyWithoutFileNestedInput
@@ -687,6 +745,8 @@ export type ScanFileCreateWithoutReportsInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   case: Prisma.CaseCreateNestedOneWithoutFilesInput
@@ -701,6 +761,8 @@ export type ScanFileUncheckedCreateWithoutReportsInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
   tasks?: Prisma.AnalysisTaskUncheckedCreateNestedManyWithoutFileInput
@@ -729,6 +791,8 @@ export type ScanFileUpdateWithoutReportsInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   case?: Prisma.CaseUpdateOneRequiredWithoutFilesNestedInput
@@ -743,6 +807,8 @@ export type ScanFileUncheckedUpdateWithoutReportsInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   tasks?: Prisma.AnalysisTaskUncheckedUpdateManyWithoutFileNestedInput
@@ -755,6 +821,8 @@ export type ScanFileCreateManyCaseInput = {
   sha256: string
   sizeBytes: number
   scanTime?: Date | string | null
+  department?: string | null
+  doctor?: string | null
   status?: string
   createdAt?: Date | string
 }
@@ -766,6 +834,8 @@ export type ScanFileUpdateWithoutCaseInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   tasks?: Prisma.AnalysisTaskUpdateManyWithoutFileNestedInput
@@ -779,6 +849,8 @@ export type ScanFileUncheckedUpdateWithoutCaseInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   tasks?: Prisma.AnalysisTaskUncheckedUpdateManyWithoutFileNestedInput
@@ -792,6 +864,8 @@ export type ScanFileUncheckedUpdateManyWithoutCaseInput = {
   sha256?: Prisma.StringFieldUpdateOperationsInput | string
   sizeBytes?: Prisma.IntFieldUpdateOperationsInput | number
   scanTime?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  department?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  doctor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -844,6 +918,8 @@ export type ScanFileSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   sha256?: boolean
   sizeBytes?: boolean
   scanTime?: boolean
+  department?: boolean
+  doctor?: boolean
   status?: boolean
   createdAt?: boolean
   case?: boolean | Prisma.CaseDefaultArgs<ExtArgs>
@@ -860,6 +936,8 @@ export type ScanFileSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   sha256?: boolean
   sizeBytes?: boolean
   scanTime?: boolean
+  department?: boolean
+  doctor?: boolean
   status?: boolean
   createdAt?: boolean
   case?: boolean | Prisma.CaseDefaultArgs<ExtArgs>
@@ -873,6 +951,8 @@ export type ScanFileSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   sha256?: boolean
   sizeBytes?: boolean
   scanTime?: boolean
+  department?: boolean
+  doctor?: boolean
   status?: boolean
   createdAt?: boolean
   case?: boolean | Prisma.CaseDefaultArgs<ExtArgs>
@@ -886,11 +966,13 @@ export type ScanFileSelectScalar = {
   sha256?: boolean
   sizeBytes?: boolean
   scanTime?: boolean
+  department?: boolean
+  doctor?: boolean
   status?: boolean
   createdAt?: boolean
 }
 
-export type ScanFileOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "caseId" | "originalName" | "storedPath" | "sha256" | "sizeBytes" | "scanTime" | "status" | "createdAt", ExtArgs["result"]["scanFile"]>
+export type ScanFileOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "caseId" | "originalName" | "storedPath" | "sha256" | "sizeBytes" | "scanTime" | "department" | "doctor" | "status" | "createdAt", ExtArgs["result"]["scanFile"]>
 export type ScanFileInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   case?: boolean | Prisma.CaseDefaultArgs<ExtArgs>
   tasks?: boolean | Prisma.ScanFile$tasksArgs<ExtArgs>
@@ -919,6 +1001,8 @@ export type $ScanFilePayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     sha256: string
     sizeBytes: number
     scanTime: Date | null
+    department: string | null
+    doctor: string | null
     status: string
     createdAt: Date
   }, ExtArgs["result"]["scanFile"]>
@@ -1354,6 +1438,8 @@ export interface ScanFileFieldRefs {
   readonly sha256: Prisma.FieldRef<"ScanFile", 'String'>
   readonly sizeBytes: Prisma.FieldRef<"ScanFile", 'Int'>
   readonly scanTime: Prisma.FieldRef<"ScanFile", 'DateTime'>
+  readonly department: Prisma.FieldRef<"ScanFile", 'String'>
+  readonly doctor: Prisma.FieldRef<"ScanFile", 'String'>
   readonly status: Prisma.FieldRef<"ScanFile", 'String'>
   readonly createdAt: Prisma.FieldRef<"ScanFile", 'DateTime'>
 }
