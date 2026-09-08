@@ -26,6 +26,13 @@ const statusBadge: Record<string, string> = {
   pending_analysis: "border-red-200 bg-red-50 text-red-700",
 };
 
+const severityMeta: Record<string, { color: string; labelKey: string }> = {
+  Normal: { color: "text-emerald-600", labelKey: "enums.severityNegative" },
+  Mild: { color: "text-yellow-600", labelKey: "enums.severityMild" },
+  Moderate: { color: "text-orange-600", labelKey: "enums.severityModerate" },
+  Severe: { color: "text-red-600", labelKey: "enums.severitySevere" },
+};
+
 const selectCls = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export default function Cases() {
@@ -126,6 +133,7 @@ export default function Cases() {
                       <TableHead>{t("cases.colName")}</TableHead>
                       <TableHead>{t("cases.colGender")}</TableHead>
                       <TableHead>{t("cases.colStatus")}</TableHead>
+                      <TableHead>{t("cases.colResult")}</TableHead>
                       <TableHead>{t("cases.colLatest")}</TableHead>
                       <TableHead>{t("cases.colCreated")}</TableHead>
                       <TableHead className="text-right">{t("cases.colOps")}</TableHead>
@@ -138,6 +146,18 @@ export default function Cases() {
                         <TableCell className="font-semibold text-foreground">{c.name || "--"}</TableCell>
                         <TableCell>{c.gender === "female" || c.gender === "女" ? t("enums.genderFemale") : t("enums.genderMale")}</TableCell>
                         <TableCell><Status value={c.status} /></TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {c.latestReport ? (
+                            <span className={`font-semibold ${severityMeta[c.latestReport.severity]?.color || "text-foreground"}`}>
+                              {t("cases.cobbResult", {
+                                angle: Number.isFinite(Number(c.latestReport.cobbAngle)) ? Math.round(Number(c.latestReport.cobbAngle)) : "--",
+                                level: severityMeta[c.latestReport.severity] ? t(severityMeta[c.latestReport.severity].labelKey) : c.latestReport.severity,
+                              })}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">--</span>
+                          )}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap">{formatDate(c.latestReportTime)}</TableCell>
                         <TableCell className="whitespace-nowrap">{formatDate(c.createdAt)}</TableCell>
                         <TableCell className="whitespace-nowrap text-right">

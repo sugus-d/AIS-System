@@ -170,6 +170,19 @@ class ApiClient {
     return response.arrayBuffer();
   }
 
+  // 标注平台最新 3D mesh（笔刷编辑后 ROI / 算法 ROI / 原始）用于 3D 查看
+  async downloadMesh(fileId: string): Promise<ArrayBuffer> {
+    const token = this.getToken();
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/files/${fileId}/mesh`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch {
+      throw new Error(i18next.t("api.networkError"));
+    }
+    if (!response.ok) throw new Error(i18next.t("api.downloadFailed", { status: response.status }));
+    return response.arrayBuffer();
+  }
+
   // 图片可直接显示的 URL（<img> 无法带 Authorization 头，走 ?token=）
   fileDownloadUrl(fileId: string): string {
     const token = this.getToken();
@@ -266,20 +279,36 @@ class ApiClient {
   async restoreBackup(name: string) { return this.request<any>(`/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' }); }
 
   // ============ 统计 ============
-  async getStatistics() {
-    return this.request<any>('/statistics/overview');
+  private statsQuery(filters?: Record<string, string>) {
+    const q = new URLSearchParams();
+    Object.entries(filters || {}).forEach(([k, v]) => v && q.set(k, String(v)));
+    const s = q.toString();
+    return s ? `?${s}` : "";
+  }
+
+  async getStatistics(filters?: Record<string, string>) {
+    return this.request<any>(`/statistics/overview${this.statsQuery(filters)}`);
   }
 
   async getCasesDistribution(type: string = 'department') {
     return this.request<any>(`/statistics/cases-distribution?type=${type}`);
   }
 
-  async getAISDistribution() {
-    return this.request<any>('/statistics/ais-distribution');
+  async getAISDistribution(filters?: Record<string, string>) {
+    return this.request<any>(`/statistics/ais-distribution${this.statsQuery(filters)}`);
+  }
+
+  async getDoctorDistribution(filters?: Record<string, string>) {
+    return this.request<any>(`/statistics/doctor-distribution${this.statsQuery(filters)}`);
   }
 
   async getTimeSeries(metric: string = 'cases', period: string = 'week') {
     return this.request<any>(`/statistics/time-series?metric=${metric}&period=${period}`);
+  }
+
+  // 机构列表（含机构管理员），供统计筛选 / 用户管理使用
+  async getInstitutions() {
+    return this.request<any>('/users/institutions');
   }
 
   // ============ 用户管理 ============

@@ -13,6 +13,8 @@ type UserRecord = {
   name: string;
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
+  institutionName?: string;
+  institutionAdmin?: string | null;
   createTime: string;
   lastLogin: string;
   status: "active" | "disabled";
@@ -61,6 +63,8 @@ const toRecord = (user: any): UserRecord => ({
   name: user.name || "--",
   role: user.role,
   department: user.department || "--",
+  institutionName: user.institutionName || undefined,
+  institutionAdmin: user.institutionAdmin || null,
   createTime: formatDate(user.createdAt),
   lastLogin: formatDate(user.lastLogin),
   status: user.status === "disabled" ? "disabled" : "active",
@@ -231,6 +235,22 @@ export default function AdminUsers() {
       render: (value) => roleLabels[value as UserRecord["role"]] ? t(roleLabels[value as UserRecord["role"]]) : value,
     },
     { key: "department", label: t("users.colDepartment"), width: "140px" },
+    {
+      key: "institutionName",
+      label: t("users.colInstitution"),
+      width: "200px",
+      render: (_value, row) => {
+        const anyRow = row as any;
+        const inst = anyRow.institutionName || "--";
+        const admin = anyRow.institutionAdmin;
+        return (
+          <div>
+            <p className="text-sm font-medium text-[color:var(--color-text-primary)]">{inst}</p>
+            {admin ? <p className="mt-0.5 text-xs text-muted-foreground">{t("users.governedBy", { admin })}</p> : null}
+          </div>
+        );
+      },
+    },
     { key: "createTime", label: t("users.colCreateTime"), width: "165px", sortable: true },
     { key: "lastLogin", label: t("users.colLastLogin"), width: "165px", sortable: true },
     {

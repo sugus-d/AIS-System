@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { BarChart3, FileStack, RefreshCw, ScanLine, Users } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { BarChart3, FileStack, RefreshCw, RotateCcw, ScanLine, Users } from "lucide-react";
+import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
@@ -18,9 +18,13 @@ type Overview = {
 
 type Distribution = { name: string; value: number; color?: string };
 type TrendPoint = { date: string; value: number };
+type DoctorStat = { name: string; department: string; patientCount: number };
+type InstitutionOption = { id: string; name: string; admin: string | null };
+type FilterState = { dateFrom?: string; dateTo?: string; institutionId?: string; department?: string; doctor?: string };
 
 const adminRoles = ["admin", "system_admin", "institution_admin"];
 const pieColors = ["#16A34A", "#D97706", "#EA580C", "#DC2626"];
+const selectCls = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 // 后端返回的英文等级名 → 翻译 key
 const aisNameKey = (name: string): string => {
@@ -31,25 +35,49 @@ const aisNameKey = (name: string): string => {
 export default function StatisticsPage() {
   const { t } = useTranslation();
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [departmentData, setDepartmentData] = useState<Distribution[]>([]);
   const [aisData, setAisData] = useState<Distribution[]>([]);
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+  const [doctorData, setDoctorData] = useState<DoctorStat[]>([]);
+  const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
+  const [doctorOptions, setDoctorOptions] = useState<DoctorStat[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<Distribution[]>([]);
+  const [filters, setFilters] = useState<FilterState>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const isAdmin = adminRoles.includes(sessionStorage.getItem("user_role") || "");
 
+  // 加载筛选所需的选项（机构 / 医生 / 科室）
+  useEffect(() => {
+    api.getInstitutions().then(setInstitutions).catch(() => undefined);
+    api.getDoctorDistribution().then(setDoctorOptions).catch(() => undefined);
+    api.getCasesDistribution("department").then(setDepartmentOptions).catch(() => undefined);
+  }, []);
+
+  const activeFilters = (): Record<string, string> => {
+    const q: Record<string, string> = {};
+    (Object.keys(filters) as (keyof FilterState)[]).forEach((key) => {
+      const value = filters[key];
+      if (value) q[key] = value;
+    });
+    return q;
+  };
+
   const load = async () => {
     try {
       setLoading(true); setError("");
-      const [nextOverview, departments, ais, trend] = await Promise.all([api.getStatistics(), api.getCasesDistribution("department"), api.getAISDistribution(), api.getTimeSeries("cases", "week")]);
+      const q = activeFilters();
+      const [nextOverview, ais, doctors, trend] = await Promise.all([api.getStatistics(q), api.getAISDistribution(q), api.getDoctorDistribution(q), api.getTimeSeries("cases", "week")]);
       setOverview(nextOverview);
-      setDepartmentData(departments);
       setAisData(ais);
+      setDoctorData(doctors);
       setTrendData(trend.map((item: TrendPoint) => ({ ...item, date: item.date.slice(5) })));
     } catch (caught) { setError(caught instanceof Error ? caught.message : t("stats.loadFailed")); } finally { setLoading(false); }
   };
 
   useEffect(() => { void load(); }, []);
+
+  const setFilter = (key: keyof FilterState, value: string) => setFilters((prev) => ({ ...prev, [key]: value }));
+  const resetFilters = () => setFilters({});
 
   const metrics = [
     { label: t("stats.totalCases"), value: overview?.cases.total, icon: Users, tone: "bg-blue-50 text-blue-700" },
@@ -63,7 +91,7 @@ export default function StatisticsPage() {
       <Sidebar isAdmin={isAdmin} />
       <div className="layout-header"><Header isAdmin={isAdmin} /></div>
       <main className="layout-content">
-        <div className="content-wrapper space-y-8">
+        <div className="content-wrapper space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">{t("stats.eyebrow")}</p>
@@ -73,6 +101,42 @@ export default function StatisticsPage() {
               <RefreshCw size={16} className={loading ? "animate-spin" : ""} />{t("stats.refresh")}
             </Button>
           </div>
+
+          {/* 筛选栏：时间 / 机构 / 科室 / 人员 */}
+          <Card className="border-border/80 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTimeFrom")}
+                <input type="date" className={selectCls} value={filters.dateFrom || ""} onChange={(e) => setFilter("dateFrom", e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTo")}
+                <input type="date" className={selectCls} value={filters.dateTo || ""} onChange={(e) => setFilter("dateTo", e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterInstitution")}
+                <select className={selectCls} value={filters.institutionId || ""} onChange={(e) => setFilter("institutionId", e.target.value)}>
+                  <option value="">{t("stats.filterAll")}</option>
+                  {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterDepartment")}
+                <select className={selectCls} value={filters.department || ""} onChange={(e) => setFilter("department", e.target.value)}>
+                  <option value="">{t("stats.filterAll")}</option>
+                  {departmentOptions.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterDoctor")}
+                <select className={selectCls} value={filters.doctor || ""} onChange={(e) => setFilter("doctor", e.target.value)}>
+                  <option value="">{t("stats.filterAll")}</option>
+                  {doctorOptions.map((d) => <option key={d.name} value={d.name}>{d.name}{d.department ? `（${d.department}）` : ""}</option>)}
+                </select>
+              </label>
+              <Button variant="outline" onClick={() => { resetFilters(); }} className="h-10">
+                <RotateCcw size={15} />{t("stats.filterReset")}
+              </Button>
+              <Button variant="outline" onClick={() => void load()} className="h-10">
+                <RefreshCw size={15} />{t("stats.filterApply")}
+              </Button>
+            </div>
+          </Card>
 
           {error ? (
             <section className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-destructive">
@@ -93,7 +157,7 @@ export default function StatisticsPage() {
                 ))}
               </section>
 
-              <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <section>
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.trendTitle")}</h2>
@@ -111,23 +175,30 @@ export default function StatisticsPage() {
                     </ResponsiveContainer>
                   </div>
                 </Card>
+              </section>
 
+              {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1） */}
+              <section>
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
-                    <h2 className="text-lg font-semibold text-foreground">{t("stats.deptTitle")}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.deptHint")}</p>
+                    <h2 className="text-lg font-semibold text-foreground">{t("stats.doctorTitle")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.doctorHint")}</p>
                   </div>
-                  <div className="h-[280px]" aria-label={t("stats.chartDeptLabel")}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={departmentData} layout="vertical" margin={{ top: 4, right: 18, left: 18, bottom: 0 }}>
-                        <CartesianGrid horizontal={false} stroke="#DBEAFE" />
-                        <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
-                        <YAxis dataKey="name" type="category" width={86} tickLine={false} axisLine={false} />
-                        <Tooltip formatter={(value: number) => [value, t("stats.tooltipCases")]} />
-                        <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 4, 4]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {doctorData.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">{t("stats.noData")}</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {doctorData.map((d) => (
+                        <div key={d.name} className="flex items-center justify-between rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-neutral)] px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-[color:var(--color-text-primary)]">{d.name}</p>
+                            {d.department && d.department !== "未分配" && <p className="truncate text-xs text-[color:var(--color-text-tertiary)]">{d.department}</p>}
+                          </div>
+                          <strong className="ml-3 text-lg tabular-nums text-[color:var(--color-primary)]">{d.patientCount}<span className="ml-1 text-xs font-normal text-muted-foreground">{t("stats.patientUnit")}</span></strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Card>
               </section>
 

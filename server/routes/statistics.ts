@@ -4,10 +4,198 @@ import { canAccessCase } from "../middleware/access";
 
 const router = Router();
 const severity = [{ name: "Normal", color: "#22c55e" }, { name: "Mild", color: "#eab308" }, { name: "Moderate", color: "#f97316" }, { name: "Severe", color: "#ef4444" }];
-async function scoped(user: any) { const cases = await db.case.findMany({ include: { files: true, reports: true, owner: true } }); return cases.filter((item) => canAccessCase(user, item)); }
-router.get("/overview", async (req: any, res) => { const cases = await scoped(req.user); const ids = cases.map((item) => item.id); const tasks = ids.length ? await db.analysisTask.findMany({ where: { caseId: { in: ids } } }) : []; const reports = cases.flatMap((item) => item.reports); const count = (name: string) => reports.filter((report) => report.severity === name).length; const avg = reports.length ? reports.reduce((total, report) => total + report.cobbAngle, 0) / reports.length : 0; res.json({ success: true, data: { cases: { total: cases.length, male: cases.filter((item) => /male|男/i.test(item.gender)).length, female: cases.filter((item) => /female|女/i.test(item.gender)).length }, files: { total: cases.reduce((total, item) => total + item.files.length, 0) }, reports: { total: reports.length, completed: reports.filter((report) => report.annotationStatus === "approved").length }, aisDistribution: { normal: count("Normal"), mild: count("Mild"), moderate: count("Moderate"), severe: count("Severe") }, tasks: { total: tasks.length, success: tasks.filter((task) => task.status === "success").length, failed: tasks.filter((task) => task.status === "failed").length, successRate: tasks.length ? (tasks.filter((task) => task.status === "success").length * 100 / tasks.length).toFixed(1) : "0" }, metrics: { avgCobbAngle: avg.toFixed(1), positiveRate: reports.length ? (reports.filter((report) => report.severity !== "Normal").length * 100 / reports.length).toFixed(1) : "0" } } }); });
-router.get("/cases-distribution", async (req: any, res) => { const field = req.query.type === "doctor" ? "doctor" : req.query.type === "gender" ? "gender" : "department"; const distribution: Record<string, number> = {}; for (const item of await scoped(req.user)) { let raw = item[field]; if (!raw && field === "department") raw = item.owner?.department; else if (!raw && field === "doctor") raw = item.owner?.displayName; const value = String(raw || "未分配"); distribution[value] = (distribution[value] || 0) + 1; } res.json({ success: true, data: Object.entries(distribution).map(([name, value]) => ({ name, value })) }); });
-router.get("/ais-distribution", async (req: any, res) => { const reports = (await scoped(req.user)).flatMap((item) => item.reports); res.json({ success: true, data: severity.map((item) => ({ ...item, value: reports.filter((report) => report.severity === item.name).length })) }); });
-router.get("/time-series", async (req: any, res) => { const metric = req.query.metric; const cases = await scoped(req.user); const caseIds = cases.map((item) => item.id); const rows = metric === "analyses" ? (caseIds.length ? await db.analysisTask.findMany({ where: { caseId: { in: caseIds } } }) : []) : metric === "reports" ? cases.flatMap((item) => item.reports) : cases; const values = new Map<string, number>(); for (const row of rows as any[]) { const date = row.createdAt.toISOString().slice(0, 10); values.set(date, (values.get(date) || 0) + 1); } res.json({ success: true, data: [...values.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value })) }); });
-router.post("/export", async (req: any, res) => { const cases = await scoped(req.user); const reports = cases.flatMap((item) => item.reports); const body = [["指标", "数值"], ["病例数", cases.length], ["扫描文件数", cases.reduce((sum, item) => sum + item.files.length, 0)], ["报告数", reports.length], ["正常", reports.filter((item) => item.severity === "Normal").length], ["轻度", reports.filter((item) => item.severity === "Mild").length], ["中度", reports.filter((item) => item.severity === "Moderate").length], ["重度", reports.filter((item) => item.severity === "Severe").length]].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n"); res.setHeader("Content-Type", "text/csv; charset=utf-8"); res.setHeader("Content-Disposition", 'attachment; filename="AIS-statistics.csv"'); return res.send(`\uFEFF${body}`); });
+
+// 可见病例（含报告/任务/文件身份），供统计使用
+async function scoped(user: any) {
+  const cases = await db.case.findMany({
+    include: {
+      files: true,
+      reports: {
+        include: {
+          task: true,
+          file: { select: { doctor: true, department: true } },
+        },
+      },
+      owner: true,
+    },
+  });
+  return cases.filter((item) => canAccessCase(user, item));
+}
+
+// 报告身份：优先分析时写入 clinician（提交者身份快照），回退到文件/受检者
+function reportIdentity(report: any) {
+  let clinician: any = {};
+  try {
+    clinician = report.resultJson ? (JSON.parse(report.resultJson)?.clinician ?? {}) : {};
+  } catch { /* 忽略非法 JSON */ }
+  return {
+    doctor: String(clinician.doctor || report.file?.doctor || ""),
+    department: String(clinician.department || report.file?.department || ""),
+  };
+}
+
+// 分析时间：最近一次任务完成时间（重分析原地更新后 taskId 指向最新任务），无任务回退报告创建时间
+function analysisTime(report: any) {
+  const finished = report.task?.finishedAt ? new Date(report.task.finishedAt).getTime() : NaN;
+  return Number.isFinite(finished) ? finished : new Date(report.createdAt).getTime();
+}
+
+// 把可见病例整理为 (caseMap, allReports)，便于各接口按需过滤
+function flatten(cases: any[]) {
+  const caseById = new Map(cases.map((c) => [c.id, c]));
+  const reports = cases.flatMap((c) => c.reports);
+  return { caseById, reports };
+}
+
+// 筛选：时间（按分析时间）/ 机构 / 科室 / 人员（医生）
+function filterReports(reports: any[], caseById: Map<string, any>, q: any) {
+  const dateFrom = typeof q.dateFrom === "string" && q.dateFrom ? new Date(`${q.dateFrom}T00:00:00`).getTime() : null;
+  const dateTo = typeof q.dateTo === "string" && q.dateTo ? new Date(`${q.dateTo}T23:59:59.999`).getTime() : null;
+  const institutionId = typeof q.institutionId === "string" && q.institutionId ? q.institutionId : null;
+  const department = typeof q.department === "string" && q.department ? q.department : null;
+  const doctor = typeof q.doctor === "string" && q.doctor ? q.doctor : null;
+  return reports.filter((report) => {
+    const caseItem = caseById.get(report.caseId) || {};
+    if (institutionId && String(caseItem.institutionId || "") !== institutionId) return false;
+    const time = analysisTime(report);
+    if (dateFrom !== null && time < dateFrom) return false;
+    if (dateTo !== null && time > dateTo) return false;
+    const { doctor: d, department: dep } = reportIdentity(report);
+    if (doctor && d !== doctor) return false;
+    if (department && (dep || "未分配") !== department) return false;
+    return true;
+  });
+}
+
+// 每个受检者取「分析时间最新」的一份报告（AIS 分级按人，用最新报告结果）
+function latestPerCase(reports: any[]) {
+  const best = new Map<string, any>();
+  for (const report of reports) {
+    const prev = best.get(report.caseId);
+    if (!prev || analysisTime(report) > analysisTime(prev)) best.set(report.caseId, report);
+  }
+  return [...best.values()];
+}
+
+function hasReportLevelFilter(q: any) {
+  return Boolean((typeof q.department === "string" && q.department) || (typeof q.doctor === "string" && q.doctor) || (typeof q.dateFrom === "string" && q.dateFrom) || (typeof q.dateTo === "string" && q.dateTo));
+}
+
+router.get("/overview", async (req: any, res) => {
+  const cases = await scoped(req.user);
+  const institutionId = typeof req.query.institutionId === "string" && req.query.institutionId ? req.query.institutionId : null;
+  const baseCases = institutionId ? cases.filter((c) => String(c.institutionId || "") === institutionId) : cases;
+  const ids = baseCases.map((item) => item.id);
+  const tasks = ids.length ? await db.analysisTask.findMany({ where: { caseId: { in: ids } } }) : [];
+  const { caseById, reports: allReports } = flatten(baseCases);
+  const reports = filterReports(allReports, caseById, req.query);
+  const distinctCases = new Set(reports.map((r) => r.caseId)).size;
+  const count = (name: string) => reports.filter((report) => report.severity === name).length;
+  const avg = reports.length ? reports.reduce((total, report) => total + report.cobbAngle, 0) / reports.length : 0;
+  const caseTotal = hasReportLevelFilter(req.query) ? distinctCases : baseCases.length;
+  res.json({
+    success: true,
+    data: {
+      cases: { total: caseTotal, male: baseCases.filter((item) => /male|男/i.test(item.gender)).length, female: baseCases.filter((item) => /female|女/i.test(item.gender)).length },
+      files: { total: baseCases.reduce((total, item) => total + item.files.length, 0) },
+      reports: { total: reports.length, completed: reports.filter((report) => report.annotationStatus === "approved").length },
+      aisDistribution: { normal: count("Normal"), mild: count("Mild"), moderate: count("Moderate"), severe: count("Severe") },
+      tasks: { total: tasks.length, success: tasks.filter((task) => task.status === "success").length, failed: tasks.filter((task) => task.status === "failed").length, successRate: tasks.length ? (tasks.filter((task) => task.status === "success").length * 100 / tasks.length).toFixed(1) : "0" },
+      metrics: {
+        avgCobbAngle: avg.toFixed(1),
+        positiveRate: reports.length ? (reports.filter((report) => report.severity !== "Normal").length * 100 / reports.length).toFixed(1) : "0",
+      },
+    },
+  });
+});
+
+router.get("/cases-distribution", async (req: any, res) => {
+  const cases = await scoped(req.user);
+  const { caseById, reports: allReports } = flatten(cases);
+  const reports = filterReports(allReports, caseById, req.query);
+  const field = req.query.type === "doctor" ? "doctor" : req.query.type === "gender" ? "gender" : "department";
+  const distribution: Record<string, number> = {};
+  if (field === "doctor") {
+    for (const report of reports) {
+      const { doctor } = reportIdentity(report);
+      const key = doctor || "未分配";
+      distribution[key] = (distribution[key] || 0) + 1;
+    }
+  } else {
+    for (const item of cases) {
+      let raw = item[field];
+      if (!raw && field === "department") raw = item.owner?.department;
+      const value = String(raw || "未分配");
+      distribution[value] = (distribution[value] || 0) + 1;
+    }
+  }
+  res.json({ success: true, data: Object.entries(distribution).map(([name, value]) => ({ name, value })) });
+});
+
+// AIS 分级：按「人」统计 —— 每受检者用其最新一份报告的分级（Req 5）
+router.get("/ais-distribution", async (req: any, res) => {
+  const cases = await scoped(req.user);
+  const institutionId = typeof req.query.institutionId === "string" && req.query.institutionId ? req.query.institutionId : null;
+  const baseCases = institutionId ? cases.filter((c) => String(c.institutionId || "") === institutionId) : cases;
+  const { caseById, reports: allReports } = flatten(baseCases);
+  const reports = filterReports(allReports, caseById, req.query);
+  const latest = latestPerCase(reports);
+  res.json({ success: true, data: severity.map((item) => ({ ...item, value: latest.filter((report) => report.severity === item.name).length })) });
+});
+
+// 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1，多医生各自 +1）(Req 7)
+router.get("/doctor-distribution", async (req: any, res) => {
+  const cases = await scoped(req.user);
+  const institutionId = typeof req.query.institutionId === "string" && req.query.institutionId ? req.query.institutionId : null;
+  const baseCases = institutionId ? cases.filter((c) => String(c.institutionId || "") === institutionId) : cases;
+  const { caseById, reports: allReports } = flatten(baseCases);
+  const reports = filterReports(allReports, caseById, req.query);
+  const pairs = new Set<string>(); // `${doctor}||${caseId}`
+  const meta = new Map<string, { name: string; department: string }>();
+  for (const report of reports) {
+    const { doctor, department } = reportIdentity(report);
+    if (!doctor) continue;
+    pairs.add(`${doctor}||${report.caseId}`);
+    if (!meta.has(doctor)) meta.set(doctor, { name: doctor, department: department || "未分配" });
+  }
+  const counts = new Map<string, number>();
+  for (const pair of pairs) {
+    const doctor = pair.split("||")[0];
+    counts.set(doctor, (counts.get(doctor) || 0) + 1);
+  }
+  const data = [...meta.values()].map((m) => ({ ...m, patientCount: counts.get(m.name) || 0 })).sort((a, b) => b.patientCount - a.patientCount);
+  res.json({ success: true, data });
+});
+
+router.get("/time-series", async (req: any, res) => {
+  const metric = req.query.metric;
+  const cases = await scoped(req.user);
+  const caseIds = cases.map((item) => item.id);
+  const rows = metric === "analyses" ? (caseIds.length ? await db.analysisTask.findMany({ where: { caseId: { in: caseIds } } }) : []) : metric === "reports" ? cases.flatMap((item) => item.reports) : cases;
+  const values = new Map<string, number>();
+  for (const row of rows as any[]) {
+    const date = row.createdAt.toISOString().slice(0, 10);
+    values.set(date, (values.get(date) || 0) + 1);
+  }
+  res.json({ success: true, data: [...values.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value })) });
+});
+
+router.post("/export", async (req: any, res) => {
+  const cases = await scoped(req.user);
+  const { caseById, reports: allReports } = flatten(cases);
+  const reports = filterReports(allReports, caseById, req.query);
+  const body = [
+    ["指标", "数值"],
+    ["病例数", new Set(reports.map((r) => r.caseId)).size],
+    ["分析报告数", reports.length],
+    ["正常", reports.filter((item) => item.severity === "Normal").length],
+    ["轻度", reports.filter((item) => item.severity === "Mild").length],
+    ["中度", reports.filter((item) => item.severity === "Moderate").length],
+    ["重度", reports.filter((item) => item.severity === "Severe").length],
+  ].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=\"AIS-statistics.csv\"");
+  return res.send(`\uFEFF${body}`);
+});
+
 export default router;

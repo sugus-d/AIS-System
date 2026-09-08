@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import multer from "multer";
@@ -57,6 +57,42 @@ router.get("/:id/download", async (req: any, res) => {
   if (!file || !canAccessCase(req.user, file.case)) return res.status(404).json({ success: false, message: "File not found." });
   if (!existsSync(file.storedPath)) return res.status(404).json({ success: false, message: "File content missing." });
   return res.sendFile(path.resolve(file.storedPath));
+});
+
+// 标注平台最新 3D mesh：优先 笔刷编辑后 ROI → 算法 roi.ply → 原始扫描（标注平台 3D 视图同款优先级）
+function resolveLatestMeshPath(caseId: string, fallback: string): string {
+  const resultsRoot = process.env.AIS_RESULTS_ROOT || localPaths.results;
+  try {
+    const labelingDir = path.join(resultsRoot, "labeling", "cache", caseId, "extract_roi");
+    if (existsSync(labelingDir)) {
+      const edited = readdirSync(labelingDir)
+        .filter((name) => name.startsWith("roi_edited_") && name.endsWith(".ply"))
+        .map((name) => path.join(labelingDir, name))
+        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+      if (edited.length) return edited[0];
+    }
+  } catch { /* 忽略目录不存在 */ }
+  try {
+    const outputsDir = path.join(resultsRoot, "prediction-outputs");
+    if (existsSync(outputsDir)) {
+      const dirs = readdirSync(outputsDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${caseId}-`))
+        .map((entry) => path.join(outputsDir, entry.name))
+        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+      for (const dir of dirs) {
+        const roi = path.join(dir, "roi.ply");
+        if (existsSync(roi)) return roi;
+      }
+    }
+  } catch { /* 忽略目录不存在 */ }
+  return fallback;
+}
+router.get("/:id/mesh", async (req: any, res) => {
+  const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });
+  if (!file || !canAccessCase(req.user, file.case)) return res.status(404).json({ success: false, message: "File not found." });
+  const target = resolveLatestMeshPath(file.caseId, file.storedPath);
+  if (!existsSync(target)) return res.status(404).json({ success: false, message: "Mesh content missing." });
+  return res.sendFile(path.resolve(target));
 });
 router.delete("/:id", async (req: any, res) => {
   const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });

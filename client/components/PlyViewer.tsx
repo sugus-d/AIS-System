@@ -77,7 +77,7 @@ export default function PlyViewer({
 
     let cancelled = false;
     api
-      .downloadFile(fileId)
+      .downloadMesh(fileId)
       .then((buffer) => {
         if (cancelled || disposed) return;
         const geometry = new PLYLoader().parse(buffer);

@@ -4,7 +4,7 @@ import { db, audit } from "../services/database";
 import { canAccessCase, requireRoles } from "../middleware/access";
 
 const router = Router();
-const present = (item: any) => ({ ...item, height: item.heightCm, weight: item.weightKg, fileCount: item._count?.files ?? 0, reportCount: item._count?.reports ?? 0, latestReportTime: item.reports?.[0]?.createdAt ?? null });
+const present = (item: any) => ({ ...item, height: item.heightCm, weight: item.weightKg, fileCount: item._count?.files ?? 0, reportCount: item._count?.reports ?? 0, latestReportTime: item.reports?.[0]?.createdAt ?? null, latestReport: item.reports?.[0] ? { id: item.reports[0].id, cobbAngle: item.reports[0].cobbAngle, severity: item.reports[0].severity, reportStatus: item.reports[0].review?.status ?? item.reports[0].annotationStatus ?? null } : null });
 const institutionFor = (user: any, body: any) => user.role === "system_admin" && typeof body?.institutionId === "string" ? body.institutionId : user.institutionId;
 const computeStatus = (item: any, inFlight?: Set<string>) => { if (inFlight?.has(item.id)) return "analyzing"; const latest = Array.isArray(item.reports) ? item.reports[0] : undefined; if (latest) return latest.review?.status || "under_review"; if ((item._count?.files ?? 0) > 0) return "pending_analysis"; return "pending_upload"; };
 

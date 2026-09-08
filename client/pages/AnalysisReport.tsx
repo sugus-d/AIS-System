@@ -102,6 +102,7 @@ figcaption { font-size: 12px; color: #475569; text-align: center; margin-top: 3p
 .opinion { font-size: 13px; line-height: 1.7; margin: 6px 0; white-space: pre-wrap; }
 .logo { text-align: center; margin-bottom: 10px; }
 .logo img { height: 56px; width: auto; border-radius: 10px; }
+.page-break { break-before: page; page-break-before: always; }
 </style></head><body>
 <div class="logo"><img src="${logoInline}" alt="AIS" /></div>
 <h1>${t("report.pdfTitle")}</h1>
@@ -127,6 +128,7 @@ figcaption { font-size: 12px; color: #475569; text-align: center; margin-top: 3p
 ${opinion(t("report.pdfDiagnosis"), r.diagnosis)}
 ${opinion(t("report.pdfFollowup"), r.followupSuggestion)}
 ${opinion(t("report.pdfTreatment"), r.treatment)}
+<div class="page-break">
 <h2>${t("report.imaging")}</h2>
 <div class="grid">
 ${figure(images.annotatedImage, t("report.annotatedImage"))}
@@ -135,6 +137,7 @@ ${figure(images.heatmapImage, t("report.heatmapImage"))}
 ${figure(images.normalAngleImage, t("report.normalAngleImage"))}
 </div>
 ${xraySection}
+</div>
 </body></html>`;
 };
 
@@ -619,10 +622,7 @@ export default function AnalysisReport() {
                                     <Field label="Height Index" value={report.indices.height_index} />
                                     <Field label="Normal Angle Index" value={report.indices.normal_angle_index} />
                                     <Field label="Cobb Angle" value={Math.round(report.predictedCobbAngle)} unit="°" critical={report.predictedCobbAngle >= 15} />
-                                </div>
-                                <div className="mt-3 flex items-center justify-between rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-neutral)] px-3 py-2.5">
-                                    <span className="text-xs text-[color:var(--color-text-tertiary)]">{t("report.severity")}</span>
-                                    <span className={`text-sm font-bold ${getSeverityColor(report.severity)}`}>{getSeverityLabel(report.severity)}</span>
+                                    <Field label={t("report.severity")} value={getSeverityLabel(report.severity)} valueClassName={getSeverityColor(report.severity)} />
                                 </div>
                             </div>
                         </div>
@@ -710,12 +710,12 @@ export default function AnalysisReport() {
     );
 }
 
-function Field({ label, value, unit = "", critical = false }: { label: string; value: React.ReactNode; unit?: string; critical?: boolean }) {
+function Field({ label, value, unit = "", critical = false, valueClassName = "" }: { label: string; value: React.ReactNode; unit?: string; critical?: boolean; valueClassName?: string }) {
     return (
         <div className={`rounded-lg border px-3 py-2.5 min-w-0 ${critical ? "border-[color:var(--color-error)] bg-red-50" : "border-[color:var(--color-border)] bg-[color:var(--color-neutral)]"}`}>
             <p className="text-xs text-[color:var(--color-text-tertiary)] mb-1">{label}</p>
             <div className="flex items-baseline gap-1">
-                <span className={`text-sm font-semibold truncate ${critical ? "text-[color:var(--color-error)]" : "text-[color:var(--color-text-primary)]"}`}>{value}</span>
+                <span className={`text-sm font-semibold truncate ${critical ? "text-[color:var(--color-error)]" : valueClassName || "text-[color:var(--color-text-primary)]"}`}>{value}</span>
                 {unit && <span className="text-xs text-[color:var(--color-text-secondary)] shrink-0">{unit}</span>}
             </div>
         </div>
