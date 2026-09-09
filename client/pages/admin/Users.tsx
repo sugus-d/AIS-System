@@ -17,7 +17,6 @@ type UserRecord = {
   institutionName?: string;
   institutionAdmin?: string | null;
   createTime: string;
-  lastLogin: string;
   status: "active" | "disabled";
 };
 type NewUser = {
@@ -71,7 +70,6 @@ const toRecord = (user: any): UserRecord => ({
   institutionName: user.institutionName || undefined,
   institutionAdmin: user.institutionAdmin || null,
   createTime: formatDate(user.createdAt),
-  lastLogin: formatDate(user.lastLogin),
   status: user.status === "disabled" ? "disabled" : "active",
 });
 
@@ -279,7 +277,6 @@ export default function AdminUsers() {
       },
     },
     { key: "createTime", label: t("users.colCreateTime"), width: "165px", sortable: true },
-    { key: "lastLogin", label: t("users.colLastLogin"), width: "165px", sortable: true },
     {
       key: "status",
       label: t("users.colStatus"),

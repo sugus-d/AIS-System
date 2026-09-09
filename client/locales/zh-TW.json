@@ -365,7 +365,6 @@
     "colInstitution": "所屬機構 / 管理員",
     "governedBy": "由 {{admin}} 管轄",
     "colCreateTime": "創建時間",
-    "colLastLogin": "最後登錄",
     "colStatus": "狀態",
     "statusActive": "正常",
     "statusDisabled": "已禁用",

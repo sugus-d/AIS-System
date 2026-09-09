@@ -365,7 +365,6 @@
     "colInstitution": "所属机构 / 管理员",
     "governedBy": "由 {{admin}} 管辖",
     "colCreateTime": "创建时间",
-    "colLastLogin": "最后登录",
     "colStatus": "状态",
     "statusActive": "正常",
     "statusDisabled": "已禁用",
