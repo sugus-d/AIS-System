@@ -292,6 +292,7 @@
     "filterApply": "应用筛选",
     "doctorTitle": "医生分析统计",
     "doctorHint": "每个医生出具过报告的受检者数量（同一受检者多医生各计一次）",
+    "chartDoctorLabel": "医生分析统计柱状图",
     "noData": "暂无数据",
     "patientUnit": "位患者",
     "deptTitle": "科室分布",

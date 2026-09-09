@@ -292,6 +292,7 @@
     "filterApply": "套用篩選",
     "doctorTitle": "醫生分析統計",
     "doctorHint": "每個醫生出具過報告的受檢者數量（同一受檢者多醫生各計一次）",
+    "chartDoctorLabel": "醫生分析統計柱狀圖",
     "noData": "暫無數據",
     "patientUnit": "位患者",
     "deptTitle": "科室分佈",

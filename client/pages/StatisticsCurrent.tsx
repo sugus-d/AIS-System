@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart3, FileStack, RefreshCw, RotateCcw, ScanLine, Users } from "lucide-react";
-import { CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
@@ -31,6 +31,19 @@ const aisNameKey = (name: string): string => {
   const map: Record<string, string> = { Normal: "enums.severityNegative", Mild: "enums.severityMild", Moderate: "enums.severityModerate", Severe: "enums.severitySevere" };
   return map[name] || "";
 };
+
+function DoctorBarTooltip({ active, payload }: { active?: boolean; payload?: ReadonlyArray<{ payload: DoctorStat }> }) {
+  const { t } = useTranslation();
+  if (!active || !payload || payload.length === 0) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm shadow-md">
+      <p className="font-semibold text-foreground">{d.name}</p>
+      {d.department && d.department !== "未分配" && <p className="mt-0.5 text-xs text-muted-foreground">{d.department}</p>}
+      <p className="mt-1 font-semibold tabular-nums text-primary">{d.patientCount}{t("stats.patientUnit")}</p>
+    </div>
+  );
+}
 
 export default function StatisticsPage() {
   const { t } = useTranslation();
@@ -187,16 +200,22 @@ export default function StatisticsPage() {
                   {doctorData.length === 0 ? (
                     <p className="py-8 text-center text-sm text-muted-foreground">{t("stats.noData")}</p>
                   ) : (
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                      {doctorData.map((d) => (
-                        <div key={d.name} className="flex items-center justify-between rounded-lg border border-[color:var(--color-border)] bg-[color:var(--color-neutral)] px-4 py-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-[color:var(--color-text-primary)]">{d.name}</p>
-                            {d.department && d.department !== "未分配" && <p className="truncate text-xs text-[color:var(--color-text-tertiary)]">{d.department}</p>}
-                          </div>
-                          <strong className="ml-3 text-lg tabular-nums text-[color:var(--color-primary)]">{d.patientCount}<span className="ml-1 text-xs font-normal text-muted-foreground">{t("stats.patientUnit")}</span></strong>
-                        </div>
-                      ))}
+                    <div
+                      className="w-full"
+                      style={{ height: Math.min(620, Math.max(300, doctorData.length * 52)) }}
+                      aria-label={t("stats.chartDoctorLabel")}
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[...doctorData].sort((a, b) => b.patientCount - a.patientCount)} margin={{ top: 28, right: 12, left: -14, bottom: 0 }}>
+                          <CartesianGrid vertical={false} stroke="#DBEAFE" />
+                          <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={{ fontSize: 12 }} />
+                          <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={44} />
+                          <Tooltip cursor={{ fill: "rgba(148, 163, 184, 0.14)" }} content={<DoctorBarTooltip />} />
+                          <Bar dataKey="patientCount" fill="#1E40AF" radius={[6, 6, 0, 0]} maxBarSize={56}>
+                            <LabelList dataKey="patientCount" position="top" style={{ fill: "#1E40AF", fontSize: 13, fontWeight: 600 }} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   )}
                 </Card>
