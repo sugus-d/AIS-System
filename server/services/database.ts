@@ -73,8 +73,8 @@ export async function ensureInitialAdmin() {
   if (!existsSync(configPath)) throw new Error(`未找到首次部署管理员配置：${configPath}`);
   const initial = JSON.parse(readFileSync(configPath, "utf8")) as InitialAdmin;
   if (!initial.username || !initial.password || initial.password.length < 6) throw new Error("首次部署管理员配置无效，密码至少需要 6 位。");
-  const institution = await db.institution.upsert({ where: { code: initial.institutionCode || "LOCAL-DEFAULT" }, update: {}, create: { id: "local-default-institution", name: initial.institutionName || "本地默认机构", code: initial.institutionCode || "LOCAL-DEFAULT" } });
-  await db.user.create({ data: { username: initial.username, passwordHash: await bcrypt.hash(initial.password, 12), displayName: initial.displayName || initial.username, department: initial.department, institutionId: institution.id, role: "system_admin" } });
+  await db.institution.upsert({ where: { code: initial.institutionCode || "LOCAL-DEFAULT" }, update: {}, create: { id: "local-default-institution", name: initial.institutionName || "本地默认机构", code: initial.institutionCode || "LOCAL-DEFAULT" } });
+  await db.user.create({ data: { username: initial.username, passwordHash: await bcrypt.hash(initial.password, 12), displayName: initial.displayName || initial.username, department: initial.department, institutionId: null, role: "system_admin" } });
   renameSync(configPath, `${configPath}.consumed`);
 }
 export function createToken(userId: string) { return Buffer.from(`${userId}:${Date.now()}:${crypto.randomUUID()}`).toString("base64url"); }

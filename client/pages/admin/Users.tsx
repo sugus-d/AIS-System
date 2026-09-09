@@ -13,6 +13,7 @@ type UserRecord = {
   name: string;
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
+  institutionId: string | null;
   institutionName?: string;
   institutionAdmin?: string | null;
   createTime: string;
@@ -24,6 +25,7 @@ type NewUser = {
   name: string;
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
+  institutionId: string;
   password: string;
 };
 
@@ -32,11 +34,13 @@ const roleLabels: Record<UserRecord["role"], string> = {
   institution_admin: "enums.roleInstitutionAdmin",
   operator: "enums.roleOperator",
 };
+type InstitutionOption = { id: string; name: string; admin: string | null };
 const initialNewUser: NewUser = {
   username: "",
   name: "",
   role: "operator",
   department: "",
+  institutionId: "",
   password: "",
 };
 
@@ -63,6 +67,7 @@ const toRecord = (user: any): UserRecord => ({
   name: user.name || "--",
   role: user.role,
   department: user.department || "--",
+  institutionId: user.institutionId ?? null,
   institutionName: user.institutionName || undefined,
   institutionAdmin: user.institutionAdmin || null,
   createTime: formatDate(user.createdAt),
@@ -76,6 +81,7 @@ export default function AdminUsers() {
   const isAdmin =
     role === "admin" || role === "system_admin" || role === "institution_admin";
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -85,7 +91,7 @@ export default function AdminUsers() {
   const [createError, setCreateError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<UserRecord | null>(null);
-  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; password: string }>({ username: "", name: "", role: "operator", department: "", password: "" });
+  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; institutionId: string; password: string }>({ username: "", name: "", role: "operator", department: "", institutionId: "", password: "" });
   const [editError, setEditError] = useState("");
 
   const loadUsers = async () => {
@@ -144,10 +150,16 @@ export default function AdminUsers() {
       setCreateError(t("users.nameRequired"));
       return;
     }
+    if (isSystemAdmin && newUser.role !== "system_admin" && !newUser.institutionId) {
+      setCreateError(t("users.institutionRequired"));
+      return;
+    }
     try {
       setActionId("create");
       setCreateError("");
-      const createdUser = await api.createUser({ ...newUser, username: newUser.username.trim() });
+      const payload: any = { ...newUser, username: newUser.username.trim() };
+      if (isSystemAdmin && newUser.role !== "system_admin") payload.institutionId = newUser.institutionId;
+      const createdUser = await api.createUser(payload);
       setCreateOpen(false);
       setNewUser(initialNewUser);
       setFeedback(t("users.created", { name: createdUser.username }));
@@ -162,6 +174,9 @@ export default function AdminUsers() {
   };
 
   const isSystemAdmin = role === "system_admin" || role === "admin";
+  useEffect(() => {
+    if (isSystemAdmin) api.getInstitutions().then(setInstitutions).catch(() => undefined);
+  }, [isSystemAdmin]);
   const openEdit = (row: UserRecord) => {
     setEditError("");
     setEditing(row);
@@ -170,6 +185,7 @@ export default function AdminUsers() {
       name: row.name === "--" ? "" : row.name,
       role: row.role,
       department: row.department === "--" ? "" : row.department,
+      institutionId: row.institutionId ?? "",
       password: "",
     });
     setEditOpen(true);
@@ -185,6 +201,10 @@ export default function AdminUsers() {
       setEditError(t("users.nameRequired"));
       return;
     }
+    if (isSystemAdmin && editForm.role !== "system_admin" && !editForm.institutionId) {
+      setEditError(t("users.institutionRequired"));
+      return;
+    }
     if (editForm.password && editForm.password.length < 12) {
       setEditError(t("users.pwdMinLength"));
       return;
@@ -195,9 +215,12 @@ export default function AdminUsers() {
       const payload: any = {
         username,
         name: editForm.name.trim(),
-        role: editForm.role,
         department: editForm.department,
       };
+      if (isSystemAdmin) {
+        payload.role = editForm.role;
+        if (editForm.role !== "system_admin") payload.institutionId = editForm.institutionId;
+      }
       if (editForm.password) payload.password = editForm.password;
       await api.updateUser(editing.id, payload);
       setEditOpen(false);
@@ -240,13 +263,17 @@ export default function AdminUsers() {
       label: t("users.colInstitution"),
       width: "200px",
       render: (_value, row) => {
-        const anyRow = row as any;
-        const inst = anyRow.institutionName || "--";
-        const admin = anyRow.institutionAdmin;
+        // 三级模型：系统管理员不归属机构；机构管理员显示所辖机构；临床操作员显示所属机构 + 由机构管理员管辖
+        if (row.role === "system_admin") {
+          return <p className="text-sm text-muted-foreground">--</p>;
+        }
+        const inst = row.institutionName || "--";
         return (
           <div>
             <p className="text-sm font-medium text-[color:var(--color-text-primary)]">{inst}</p>
-            {admin ? <p className="mt-0.5 text-xs text-muted-foreground">{t("users.governedBy", { admin })}</p> : null}
+            {row.role === "operator" && row.institutionAdmin ? (
+              <p className="mt-0.5 text-xs text-muted-foreground">{t("users.governedBy", { admin: row.institutionAdmin })}</p>
+            ) : null}
           </div>
         );
       },
@@ -274,13 +301,15 @@ export default function AdminUsers() {
           className="flex items-center justify-end gap-2 whitespace-nowrap"
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            className="btn-secondary px-3 py-2"
-            disabled={actionId === row.id}
-            onClick={() => openEdit(row)}
-          >
-            {t("users.edit")}
-          </button>
+          {(isSystemAdmin || row.role === "operator") && (
+            <button
+              className="btn-secondary px-3 py-2"
+              disabled={actionId === row.id}
+              onClick={() => openEdit(row)}
+            >
+              {t("users.edit")}
+            </button>
+          )}
           {isSystemAdmin && (
             <button
               className="btn-secondary px-3 py-2"
@@ -422,14 +451,17 @@ export default function AdminUsers() {
                     setNewUser((prev) => ({
                       ...prev,
                       role: event.target.value as NewUser["role"],
+                      institutionId: event.target.value === "system_admin" ? "" : prev.institutionId,
                     }))
                   }
                 >
-                  {Object.entries(roleLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {t(label)}
-                    </option>
-                  ))}
+                  {Object.entries(roleLabels)
+                    .filter(([value]) => isSystemAdmin || value === "operator")
+                    .map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {t(label)}
+                      </option>
+                    ))}
                 </select>
               </label>
               <Field
@@ -439,6 +471,30 @@ export default function AdminUsers() {
                   setNewUser((prev) => ({ ...prev, department: value }))
                 }
               />
+              {isSystemAdmin && newUser.role !== "system_admin" && (
+                <label className="block text-sm font-semibold">
+                  {t("users.chooseInstitution")}
+                  <select
+                    className="input-base mt-2 font-normal"
+                    value={newUser.institutionId}
+                    onChange={(event) =>
+                      setNewUser((prev) => ({ ...prev, institutionId: event.target.value }))
+                    }
+                  >
+                    <option value="">--</option>
+                    {institutions.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {!isSystemAdmin && (
+                <p className="text-sm text-muted-foreground md:col-span-2">
+                  {t("users.instBoundHint")}
+                </p>
+              )}
               <div className="md:col-span-2">
                 <Field
                   label={t("users.initialPwd")}
@@ -517,14 +573,17 @@ export default function AdminUsers() {
                     setEditForm((prev) => ({
                       ...prev,
                       role: event.target.value as UserRecord["role"],
+                      institutionId: event.target.value === "system_admin" ? "" : prev.institutionId,
                     }))
                   }
                 >
-                  {Object.entries(roleLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {t(label)}
-                    </option>
-                  ))}
+                  {Object.entries(roleLabels)
+                    .filter(([value]) => isSystemAdmin || value === "operator")
+                    .map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {t(label)}
+                      </option>
+                    ))}
                 </select>
                 {!isSystemAdmin && (
                   <p className="text-sm text-muted-foreground mt-1 font-normal">
@@ -539,6 +598,25 @@ export default function AdminUsers() {
                   setEditForm((prev) => ({ ...prev, department: value }))
                 }
               />
+              {isSystemAdmin && editForm.role !== "system_admin" && (
+                <label className="block text-sm font-semibold">
+                  {t("users.chooseInstitution")}
+                  <select
+                    className="input-base mt-2 font-normal"
+                    value={editForm.institutionId}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({ ...prev, institutionId: event.target.value }))
+                    }
+                  >
+                    <option value="">--</option>
+                    {institutions.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="md:col-span-2">
                 <Field
                   label={t("users.pwdLabel")}
