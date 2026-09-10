@@ -362,6 +362,7 @@
     "colAccount": "账户",
     "colRole": "角色",
     "colDepartment": "科室/岗位",
+    "colInstitution": "机构",
     "colSuperior": "上级管理员",
     "keepCurrentManager": "保持当前（{{name}}）",
     "managerRequired": "请选择上级管理员。",

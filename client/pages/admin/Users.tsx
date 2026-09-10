@@ -270,7 +270,7 @@ export default function AdminUsers() {
     { key: "department", label: t("users.colDepartment"), width: "140px" },
     {
       key: "superior",
-      label: t("users.colSuperior"),
+      label: t("users.colInstitution"),
       width: "180px",
       render: (_value, row) => {
         // 三级模型：系统管理员无上级；机构管理员的上级是系统管理员；临床操作员的上级是本机构的机构管理员

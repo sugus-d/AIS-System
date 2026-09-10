@@ -362,6 +362,7 @@
     "colAccount": "賬戶",
     "colRole": "角色",
     "colDepartment": "科室/崗位",
+    "colInstitution": "機構",
     "colSuperior": "上級管理員",
     "keepCurrentManager": "保持當前（{{name}}）",
     "managerRequired": "請選擇上級管理員。",
