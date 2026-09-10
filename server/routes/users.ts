@@ -65,8 +65,8 @@ router.get("/", requireRoles("system_admin", "institution_admin"), async (req: a
     data: {
       list: users.slice((page - 1) * pageSize, page * pageSize).map((user) => {
         const inst = user.role !== "system_admin" && user.institutionId ? instMap.get(user.institutionId) : undefined;
-        // 三级模型：系统管理员不属于任何机构；机构管理员的「机构」显示所在机构名称；临床操作员显示其上级（机构管理员）姓名
-        const superior = user.role === "system_admin" ? null : user.role === "institution_admin" ? inst?.name || null : inst?.admin || null;
+        // 三级模型：系统管理员不属于任何机构；机构管理员与临床操作员都显示所属机构名称
+        const superior = user.role === "system_admin" ? null : inst?.name || null;
         return { ...present(user), institutionName: inst?.name || null, institutionAdmin: inst?.admin || null, superior };
       }),
       total: users.length,
@@ -179,8 +179,11 @@ router.put("/:id", requireRoles("system_admin", "institution_admin"), async (req
     if (req.body.password.length < 12) return res.status(400).json({ success: false, message: passwordError });
     data.passwordHash = await bcrypt.hash(req.body.password, 12);
   }
+  // 账号首次归入某个机构时，把它名下尚未归属机构的档案一并归入该机构
+  const adoptInstitutionId = typeof data.institutionId === "string" && data.institutionId && data.institutionId !== existing.institutionId ? data.institutionId : null;
   try {
     const user = await db.user.update({ where: { id: existing.id }, data });
+    if (adoptInstitutionId) await db.case.updateMany({ where: { ownerId: existing.id, institutionId: null }, data: { institutionId: adoptInstitutionId } });
     await audit(req.user.id, "update", "User", user.id);
     res.json({ success: true, data: present(user) });
   } catch {

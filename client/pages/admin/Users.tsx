@@ -310,7 +310,7 @@ export default function AdminUsers() {
       label: t("users.colInstitution"),
       width: "180px",
       render: (_value, row) => {
-        // 三级模型：系统管理员不属于任何机构；机构管理员显示其机构名称；临床操作员显示其上级（机构管理员）姓名
+        // 三级模型：系统管理员不属于任何机构；机构管理员与临床操作员都显示所属机构名称
         if (row.role === "system_admin") return <span className="text-sm text-muted-foreground">--</span>;
         return <span className="text-sm font-medium text-[color:var(--color-text-primary)]">{row.superior || "--"}</span>;
       },

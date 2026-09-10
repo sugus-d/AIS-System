@@ -25,6 +25,8 @@ export function requireRoles(...roles: Role[]) {
 
 export function canAccessCase(user: any, item: any) {
   if (user.role === 'system_admin') return true;
+  // 自己创建的档案始终可见（包括尚未归属机构的档案）
+  if (item.ownerId === user.id) return true;
   if (!user.institutionId || user.institutionId !== item.institutionId) return false;
-  return user.role === 'institution_admin' || item.ownerId === user.id;
+  return user.role === 'institution_admin';
 }
