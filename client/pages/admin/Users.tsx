@@ -24,7 +24,6 @@ type NewUser = {
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
   institutionId: string;
-  newInstitutionName: string;
   password: string;
 };
 
@@ -34,15 +33,12 @@ const roleLabels: Record<UserRecord["role"], string> = {
   operator: "enums.roleOperator",
 };
 type InstitutionOption = { id: string; name: string; admin: string | null };
-// 创建/编辑账号时，机构下拉里代表“就地新建机构”的哨兵值
-const NEW_INSTITUTION = "__new__";
 const initialNewUser: NewUser = {
   username: "",
   name: "",
   role: "operator",
   department: "",
   institutionId: "",
-  newInstitutionName: "",
   password: "",
 };
 
@@ -91,7 +87,7 @@ export default function AdminUsers() {
   const [createError, setCreateError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<UserRecord | null>(null);
-  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; institutionId: string; newInstitutionName: string; password: string }>({ username: "", name: "", role: "operator", department: "", institutionId: "", newInstitutionName: "", password: "" });
+  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; institutionId: string; password: string }>({ username: "", name: "", role: "operator", department: "", institutionId: "", password: "" });
   const [editError, setEditError] = useState("");
   const [institutionOpen, setInstitutionOpen] = useState(false);
   const [institutionDrafts, setInstitutionDrafts] = useState<Record<string, string>>({});
@@ -155,12 +151,11 @@ export default function AdminUsers() {
       setCreateError(t("users.nameRequired"));
       return;
     }
-    const creatingInstitution = isSystemAdmin && newUser.role !== "system_admin" && (institutions.length === 0 || newUser.institutionId === NEW_INSTITUTION);
-    if (creatingInstitution && !newUser.newInstitutionName.trim()) {
-      setCreateError(t("users.institutionNameRequired"));
+    if (isSystemAdmin && newUser.role !== "system_admin" && institutions.length === 0) {
+      setCreateError(t("users.institutionEmptyHint"));
       return;
     }
-    if (isSystemAdmin && newUser.role !== "system_admin" && !creatingInstitution && !newUser.institutionId) {
+    if (isSystemAdmin && newUser.role !== "system_admin" && !newUser.institutionId) {
       setCreateError(t("users.institutionRequired"));
       return;
     }
@@ -168,10 +163,7 @@ export default function AdminUsers() {
       setActionId("create");
       setCreateError("");
       const payload: any = { username: newUser.username.trim(), name: newUser.name, role: newUser.role, department: newUser.department, password: newUser.password };
-      if (isSystemAdmin && newUser.role !== "system_admin") {
-        if (creatingInstitution) payload.newInstitutionName = newUser.newInstitutionName.trim();
-        else payload.institutionId = newUser.institutionId;
-      }
+      if (isSystemAdmin && newUser.role !== "system_admin") payload.institutionId = newUser.institutionId;
       const createdUser = await api.createUser(payload);
       setCreateOpen(false);
       setNewUser(initialNewUser);
@@ -189,8 +181,8 @@ export default function AdminUsers() {
   const isSystemAdmin = role === "system_admin" || role === "admin";
   const loadInstitutions = () => api.getInstitutions().then(setInstitutions).catch(() => undefined);
   useEffect(() => {
-    if (isSystemAdmin) void loadInstitutions();
-  }, [isSystemAdmin]);
+    if (isAdmin) void loadInstitutions();
+  }, [isAdmin]);
   useEffect(() => {
     setInstitutionDrafts(Object.fromEntries(institutions.map((i) => [i.id, i.name])));
   }, [institutions]);
@@ -228,7 +220,6 @@ export default function AdminUsers() {
       role: row.role,
       department: row.department === "--" ? "" : row.department,
       institutionId: row.institutionId ?? "",
-      newInstitutionName: "",
       password: "",
     });
     setEditOpen(true);
@@ -248,9 +239,8 @@ export default function AdminUsers() {
       setEditError(t("users.pwdMinLength"));
       return;
     }
-    const creatingInstitution = isSystemAdmin && editForm.role !== "system_admin" && editForm.institutionId === NEW_INSTITUTION;
-    if (creatingInstitution && !editForm.newInstitutionName.trim()) {
-      setEditError(t("users.institutionNameRequired"));
+    if (isSystemAdmin && editForm.role !== "system_admin" && !editForm.institutionId) {
+      setEditError(institutions.length === 0 ? t("users.institutionEmptyHint") : t("users.institutionRequired"));
       return;
     }
     try {
@@ -263,10 +253,7 @@ export default function AdminUsers() {
       };
       if (isSystemAdmin) {
         payload.role = editForm.role;
-        if (editForm.role !== "system_admin") {
-          if (creatingInstitution) payload.newInstitutionName = editForm.newInstitutionName.trim();
-          else if (editForm.institutionId) payload.institutionId = editForm.institutionId;
-        }
+        if (editForm.role !== "system_admin") payload.institutionId = editForm.institutionId;
       }
       if (editForm.password) payload.password = editForm.password;
       await api.updateUser(editing.id, payload);
@@ -401,6 +388,7 @@ export default function AdminUsers() {
               )}
               <button
                 className="btn-primary"
+                disabled={!isSystemAdmin && institutions.length === 0}
                 onClick={() => {
                   setCreateError("");
                   setCreateOpen(true);
@@ -495,7 +483,7 @@ export default function AdminUsers() {
             </div>
             <div className="mt-5 border-t border-border pt-4">
               <label className="block text-sm font-semibold">
-                {t("users.newInstitution")}
+                {t("users.institutionName")}
                 <input
                   className="input-base mt-2 font-normal"
                   value={newInstitutionInput}
@@ -562,7 +550,6 @@ export default function AdminUsers() {
                       ...prev,
                       role: event.target.value as NewUser["role"],
                       institutionId: event.target.value === "system_admin" ? "" : prev.institutionId,
-                      newInstitutionName: event.target.value === "system_admin" ? "" : prev.newInstitutionName,
                     }))
                   }
                 >
@@ -583,41 +570,33 @@ export default function AdminUsers() {
                 }
               />
               {isSystemAdmin && newUser.role !== "system_admin" && (
-                <>
-                  {institutions.length > 0 && (
-                    <label className="block text-sm font-semibold">
-                      {t("users.chooseInstitution")}
-                      <select
-                        className="input-base mt-2 font-normal"
-                        value={newUser.institutionId}
-                        onChange={(event) =>
-                          setNewUser((prev) => ({ ...prev, institutionId: event.target.value }))
-                        }
-                      >
-                        <option value="">--</option>
-                        {institutions.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.name}
-                          </option>
-                        ))}
-                        <option value={NEW_INSTITUTION}>{t("users.newInstitution")}</option>
-                      </select>
-                    </label>
-                  )}
-                  {(institutions.length === 0 || newUser.institutionId === NEW_INSTITUTION) && (
-                    <Field
-                      label={t("users.institutionName")}
-                      value={newUser.newInstitutionName}
-                      onChange={(value) =>
-                        setNewUser((prev) => ({ ...prev, newInstitutionName: value }))
+                institutions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground md:col-span-2">
+                    {t("users.institutionEmptyHint")}
+                  </p>
+                ) : (
+                  <label className="block text-sm font-semibold">
+                    {t("users.chooseInstitution")}
+                    <select
+                      className="input-base mt-2 font-normal"
+                      value={newUser.institutionId}
+                      onChange={(event) =>
+                        setNewUser((prev) => ({ ...prev, institutionId: event.target.value }))
                       }
-                    />
-                  )}
-                </>
+                    >
+                      <option value="">--</option>
+                      {institutions.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
               )}
               {!isSystemAdmin && (
                 <p className="text-sm text-muted-foreground md:col-span-2">
-                  {t("users.instBoundHint")}
+                  {institutions.length === 0 ? t("users.noInstitutionHint") : t("users.instBoundHint")}
                 </p>
               )}
               <div className="md:col-span-2">
@@ -699,7 +678,6 @@ export default function AdminUsers() {
                       ...prev,
                       role: event.target.value as UserRecord["role"],
                       institutionId: event.target.value === "system_admin" ? "" : prev.institutionId,
-                      newInstitutionName: event.target.value === "system_admin" ? "" : prev.newInstitutionName,
                     }))
                   }
                 >
@@ -725,37 +703,29 @@ export default function AdminUsers() {
                 }
               />
               {isSystemAdmin && editForm.role !== "system_admin" && (
-                <>
-                  {institutions.length > 0 && (
-                    <label className="block text-sm font-semibold">
-                      {t("users.chooseInstitution")}
-                      <select
-                        className="input-base mt-2 font-normal"
-                        value={editForm.institutionId}
-                        onChange={(event) =>
-                          setEditForm((prev) => ({ ...prev, institutionId: event.target.value }))
-                        }
-                      >
-                        <option value="">--</option>
-                        {institutions.map((i) => (
-                          <option key={i.id} value={i.id}>
-                            {i.name}
-                          </option>
-                        ))}
-                        <option value={NEW_INSTITUTION}>{t("users.newInstitution")}</option>
-                      </select>
-                    </label>
-                  )}
-                  {(institutions.length === 0 || editForm.institutionId === NEW_INSTITUTION) && (
-                    <Field
-                      label={t("users.institutionName")}
-                      value={editForm.newInstitutionName}
-                      onChange={(value) =>
-                        setEditForm((prev) => ({ ...prev, newInstitutionName: value }))
+                institutions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground md:col-span-2">
+                    {t("users.institutionEmptyHint")}
+                  </p>
+                ) : (
+                  <label className="block text-sm font-semibold">
+                    {t("users.chooseInstitution")}
+                    <select
+                      className="input-base mt-2 font-normal"
+                      value={editForm.institutionId}
+                      onChange={(event) =>
+                        setEditForm((prev) => ({ ...prev, institutionId: event.target.value }))
                       }
-                    />
-                  )}
-                </>
+                    >
+                      <option value="">--</option>
+                      {institutions.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
               )}
               <div className="md:col-span-2">
                 <Field

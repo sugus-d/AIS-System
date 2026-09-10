@@ -32,24 +32,11 @@ const loadInstitutionMap = async () => {
 const normalizeInstitutionName = (value: unknown) => String(value ?? "").trim();
 const nextInstitutionCode = () => `INST-${Date.now().toString(36).toUpperCase()}`;
 
-// 创建机构：同名机构直接复用（用于“创建账号时就地新建机构”）
-const ensureInstitution = async (name: unknown, code?: unknown) => {
-  const normalized = normalizeInstitutionName(name);
-  if (!normalized) return null;
-  const existing = await db.institution.findUnique({ where: { name: normalized } });
-  if (existing) return existing;
-  const nextCode = (typeof code === "string" && code.trim()) || nextInstitutionCode();
-  return db.institution.create({ data: { name: normalized, code: nextCode } });
-};
-
-// 解析账号归属机构：可选已有机构，也可填写新机构名称（同时创建）。系统管理员账号不调用此函数
-const resolveInstitutionId = async (body: any): Promise<string | null> => {
-  if (typeof body?.institutionId === "string" && body.institutionId) {
-    const existing = await db.institution.findUnique({ where: { id: body.institutionId }, select: { id: true } });
-    if (existing) return existing.id;
-  }
-  const created = await ensureInstitution(body?.newInstitutionName, body?.newInstitutionCode);
-  return created?.id ?? null;
+// 账号只能归属到“已存在”的机构：机构由系统管理员在机构管理里创建，创建账号时必须选择一个机构
+const findInstitutionId = async (value: unknown): Promise<string | null> => {
+  if (typeof value !== "string" || !value) return null;
+  const existing = await db.institution.findUnique({ where: { id: value }, select: { id: true } });
+  return existing?.id ?? null;
 };
 
 router.get("/", requireRoles("system_admin", "institution_admin"), async (req: any, res) => {
@@ -129,8 +116,8 @@ router.post("/", requireRoles("system_admin", "institution_admin"), async (req: 
     if (role === "system_admin") {
       institutionId = null; // 系统管理员不归属机构
     } else {
-      // 机构管理员 / 临床操作员：可选已有机构，也可就地新建机构并赋予该账号
-      institutionId = await resolveInstitutionId(req.body);
+      // 机构管理员 / 临床操作员：必须归属一个已存在的机构
+      institutionId = await findInstitutionId(req.body?.institutionId);
       if (!institutionId) return res.status(400).json({ success: false, message: institutionRequiredError });
     }
   } else {
@@ -167,7 +154,7 @@ router.put("/:id", requireRoles("system_admin", "institution_admin"), async (req
     if (targetRole === "system_admin") {
       data.institutionId = null; // 系统管理员不归属机构
     } else {
-      const nextInstitutionId = (await resolveInstitutionId(req.body)) || existing.institutionId;
+      const nextInstitutionId = (await findInstitutionId(req.body?.institutionId)) || existing.institutionId;
       if (!nextInstitutionId) return res.status(400).json({ success: false, message: institutionRequiredError });
       data.institutionId = nextInstitutionId;
     }
