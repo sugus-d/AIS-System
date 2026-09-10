@@ -172,13 +172,13 @@ export default function StatisticsPage() {
                 ))}
               </section>
 
-              <section>
+              <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.trendTitle")}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">{t("stats.trendHint")}</p>
                   </div>
-                  <div className="h-[280px]" aria-label={t("stats.chartTrendLabel")}>
+                  <div className="h-[300px]" aria-label={t("stats.chartTrendLabel")}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={trendData} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
                         <CartesianGrid vertical={false} stroke="#DBEAFE" />
@@ -190,10 +190,8 @@ export default function StatisticsPage() {
                     </ResponsiveContainer>
                   </div>
                 </Card>
-              </section>
 
-              {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1） */}
-              <section>
+                {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1） */}
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.doctorTitle")}</h2>
@@ -223,13 +221,13 @@ export default function StatisticsPage() {
                 </Card>
               </section>
 
-              <section className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+              <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.riskTitle")}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">{t("stats.riskHint")}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-6">
                     <Stat label={t("stats.completedReports")} value={overview?.reports.completed} loading={loading} />
                     <Stat label={t("stats.analysisTasks")} value={overview?.tasks.total} loading={loading} />
                     <Stat label={t("stats.avgCobb")} value={overview ? `${overview.metrics.avgCobbAngle}°` : undefined} loading={loading} />
