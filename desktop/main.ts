@@ -31,6 +31,20 @@ const MAX_LOG_BYTES = Number(process.env.AIS_LOG_MAX_BYTES || 10 * 1024 * 1024);
 const LOG_ARCHIVES = 3;
 let isShuttingDown = false;
 
+// 单实例运行：重复启动会抢占新端口，而 localStorage（记住密码、登录态）是按 origin 隔离的，
+// 端口一变这些数据就"看不见"了。第二次启动改为聚焦已有窗口。
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+app.on("second-instance", () => {
+  const existing = BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
+  if (!existing) return;
+  if (existing.isMinimized()) existing.restore();
+  existing.show();
+  existing.focus();
+});
+
 function desktopLog(message: string) {
   const directory = path.join(dataRoot(), "logs");
   const current = path.join(directory, "desktop.log");
@@ -269,6 +283,7 @@ const SPLASH_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
 </style></head><body><div class="spin"></div><div class="text">AIS 筛查系统正在启动…</div></body></html>`;
 
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return;
   const splash = new BrowserWindow({
     width: 420, height: 260, frame: false, resizable: false, movable: true, center: true,
     alwaysOnTop: true, show: false,
@@ -299,6 +314,40 @@ app.on("before-quit", (event) => {
 ipcMain.handle("app:version", (event) => {
   if (!event.senderFrame.url.startsWith("http://127.0.0.1") && !isDev) throw new Error("Unauthorized IPC sender.");
   return app.getVersion();
+});
+// 「记住密码」改为存到用户数据目录，避免因本地服务端口变化（origin 改变）而丢失
+const rememberedLoginPath = () => path.join(app.getPath("userData"), "remembered-login.json");
+const assertLocalSender = (event: { senderFrame?: { url?: string } | null }) => {
+  if (!event.senderFrame?.url?.startsWith("http://127.0.0.1") && !isDev) throw new Error("Unauthorized IPC sender.");
+};
+ipcMain.handle("login:remember:get", (event) => {
+  assertLocalSender(event);
+  try {
+    const saved = JSON.parse(readFileSync(rememberedLoginPath(), "utf8"));
+    return saved && typeof saved.username === "string" ? { username: saved.username, password: typeof saved.password === "string" ? saved.password : "" } : null;
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle("login:remember:set", (event, value: { username?: unknown; password?: unknown }) => {
+  assertLocalSender(event);
+  try {
+    const username = String(value?.username ?? "");
+    if (!username) return false;
+    writeFileSync(rememberedLoginPath(), JSON.stringify({ username, password: String(value?.password ?? "") }), "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+});
+ipcMain.handle("login:remember:clear", (event) => {
+  assertLocalSender(event);
+  try {
+    rmSync(rememberedLoginPath(), { force: true });
+    return true;
+  } catch {
+    return false;
+  }
 });
 ipcMain.handle("diagnostics:export", async (event) => {
   if (!event.senderFrame.url.startsWith("http://127.0.0.1") && !isDev) throw new Error("Unauthorized IPC sender.");

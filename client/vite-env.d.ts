@@ -9,5 +9,10 @@ interface Window {
       suggestedName: string,
       locale?: string,
     ) => Promise<{ ok: boolean; canceled?: boolean; filePath?: string } | undefined>;
+    rememberLogin: {
+      get: () => Promise<{ username: string; password: string } | null>;
+      set: (value: { username: string; password: string }) => Promise<boolean>;
+      clear: () => Promise<boolean>;
+    };
   };
 }

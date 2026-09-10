@@ -12,6 +12,16 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 
 const REMEMBER_KEY = "ais_remembered_login";
 
+// 桌面端的本地服务端口变化会改变 origin，localStorage 里的记住密码会“消失”，
+// 因此桌面端优先使用主进程保存到用户数据目录的凭据。
+const persistRemembered = (value: { username: string; password: string } | null) => {
+  if (value) localStorage.setItem(REMEMBER_KEY, JSON.stringify(value));
+  else localStorage.removeItem(REMEMBER_KEY);
+  const bridge = window.ais?.rememberLogin;
+  if (!bridge) return;
+  void (value ? bridge.set(value) : bridge.clear()).catch(() => undefined);
+};
+
 export default function Login() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -22,18 +32,30 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(REMEMBER_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved);
+    const apply = (parsed: any) => {
       if (parsed && typeof parsed.username === "string" && parsed.username) {
         setUsername(parsed.username);
         setPassword(typeof parsed.password === "string" ? parsed.password : "");
         setRemember(true);
+        return true;
       }
-    } catch {
-      localStorage.removeItem(REMEMBER_KEY);
-    }
+      return false;
+    };
+    const load = async () => {
+      const bridge = window.ais?.rememberLogin;
+      if (bridge) {
+        const saved = await bridge.get().catch(() => null);
+        if (apply(saved)) return;
+      }
+      try {
+        const raw = localStorage.getItem(REMEMBER_KEY);
+        if (!raw) return;
+        apply(JSON.parse(raw));
+      } catch {
+        localStorage.removeItem(REMEMBER_KEY);
+      }
+    };
+    void load();
   }, []);
 
   const login = async (event: React.FormEvent) => {
@@ -48,9 +70,9 @@ export default function Login() {
       sessionStorage.setItem("user_department", data.user.department || "");
       sessionStorage.setItem("user_id", data.user.id);
       if (remember) {
-        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username: username.trim(), password }));
+        persistRemembered({ username: username.trim(), password });
       } else {
-        localStorage.removeItem(REMEMBER_KEY);
+        persistRemembered(null);
       }
       navigate("/dashboard");
     } catch (caught) { setError(caught instanceof Error ? caught.message : t("login.loginFailed")); }
