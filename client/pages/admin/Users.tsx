@@ -23,8 +23,8 @@ type NewUser = {
   name: string;
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
-  managerId: string;
   institutionId: string;
+  newInstitutionName: string;
   password: string;
 };
 
@@ -34,14 +34,15 @@ const roleLabels: Record<UserRecord["role"], string> = {
   operator: "enums.roleOperator",
 };
 type InstitutionOption = { id: string; name: string; admin: string | null };
-type ManagerOption = { id: string; name: string; institutionId: string | null };
+// 创建/编辑账号时，机构下拉里代表“就地新建机构”的哨兵值
+const NEW_INSTITUTION = "__new__";
 const initialNewUser: NewUser = {
   username: "",
   name: "",
   role: "operator",
   department: "",
-  managerId: "",
   institutionId: "",
+  newInstitutionName: "",
   password: "",
 };
 
@@ -81,7 +82,6 @@ export default function AdminUsers() {
     role === "admin" || role === "system_admin" || role === "institution_admin";
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
-  const [managers, setManagers] = useState<ManagerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -91,8 +91,13 @@ export default function AdminUsers() {
   const [createError, setCreateError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<UserRecord | null>(null);
-  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; managerId: string; institutionId: string; password: string }>({ username: "", name: "", role: "operator", department: "", managerId: "", institutionId: "", password: "" });
+  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; institutionId: string; newInstitutionName: string; password: string }>({ username: "", name: "", role: "operator", department: "", institutionId: "", newInstitutionName: "", password: "" });
   const [editError, setEditError] = useState("");
+  const [institutionOpen, setInstitutionOpen] = useState(false);
+  const [institutionDrafts, setInstitutionDrafts] = useState<Record<string, string>>({});
+  const [newInstitutionInput, setNewInstitutionInput] = useState("");
+  const [institutionError, setInstitutionError] = useState("");
+  const [institutionSaving, setInstitutionSaving] = useState(false);
 
   const loadUsers = async () => {
     try {
@@ -150,21 +155,28 @@ export default function AdminUsers() {
       setCreateError(t("users.nameRequired"));
       return;
     }
-    if (isSystemAdmin && newUser.role === "operator" && !newUser.managerId) {
-      setCreateError(t("users.managerRequired"));
+    const creatingInstitution = isSystemAdmin && newUser.role !== "system_admin" && (institutions.length === 0 || newUser.institutionId === NEW_INSTITUTION);
+    if (creatingInstitution && !newUser.newInstitutionName.trim()) {
+      setCreateError(t("users.institutionNameRequired"));
+      return;
+    }
+    if (isSystemAdmin && newUser.role !== "system_admin" && !creatingInstitution && !newUser.institutionId) {
+      setCreateError(t("users.institutionRequired"));
       return;
     }
     try {
       setActionId("create");
       setCreateError("");
       const payload: any = { username: newUser.username.trim(), name: newUser.name, role: newUser.role, department: newUser.department, password: newUser.password };
-      if (isSystemAdmin && newUser.role === "operator") payload.managerId = newUser.managerId;
-      if (isSystemAdmin && newUser.role === "institution_admin" && newUser.institutionId) payload.institutionId = newUser.institutionId;
+      if (isSystemAdmin && newUser.role !== "system_admin") {
+        if (creatingInstitution) payload.newInstitutionName = newUser.newInstitutionName.trim();
+        else payload.institutionId = newUser.institutionId;
+      }
       const createdUser = await api.createUser(payload);
       setCreateOpen(false);
       setNewUser(initialNewUser);
       setFeedback(t("users.created", { name: createdUser.username }));
-      await loadUsers();
+      await Promise.all([loadUsers(), loadInstitutions()]);
     } catch (caught) {
       setCreateError(
         caught instanceof Error ? caught.message : t("users.createFailed"),
@@ -175,20 +187,38 @@ export default function AdminUsers() {
   };
 
   const isSystemAdmin = role === "system_admin" || role === "admin";
+  const loadInstitutions = () => api.getInstitutions().then(setInstitutions).catch(() => undefined);
   useEffect(() => {
-    if (isSystemAdmin) api.getInstitutions().then(setInstitutions).catch(() => undefined);
+    if (isSystemAdmin) void loadInstitutions();
   }, [isSystemAdmin]);
   useEffect(() => {
-    if (!isSystemAdmin) return;
-    api.getUsers({ role: "institution_admin", pageSize: 100 })
-      .then((result: any) => {
-        const list: ManagerOption[] = (result?.list || result?.data?.list || []).map((u: any) => ({ id: u.id, name: u.name || u.username, institutionId: u.institutionId ?? null }));
-        setManagers(list);
-        // 只有一个上级管理员时直接预选，减少一次点击
-        if (list.length === 1) setNewUser((prev) => (prev.managerId ? prev : { ...prev, managerId: list[0].id }));
-      })
-      .catch(() => undefined);
-  }, [isSystemAdmin]);
+    setInstitutionDrafts(Object.fromEntries(institutions.map((i) => [i.id, i.name])));
+  }, [institutions]);
+  const addInstitution = async () => {
+    const name = newInstitutionInput.trim();
+    if (!name) { setInstitutionError(t("users.institutionNameRequired")); return; }
+    try {
+      setInstitutionSaving(true); setInstitutionError("");
+      await api.createInstitution({ name });
+      setNewInstitutionInput("");
+      setFeedback(t("users.institutionCreated", { name }));
+      await Promise.all([loadInstitutions(), loadUsers()]);
+    } catch (caught) {
+      setInstitutionError(caught instanceof Error ? caught.message : t("users.saveFailed"));
+    } finally { setInstitutionSaving(false); }
+  };
+  const renameInstitution = async (inst: InstitutionOption) => {
+    const name = (institutionDrafts[inst.id] ?? inst.name).trim();
+    if (!name || name === inst.name) return;
+    try {
+      setInstitutionSaving(true); setInstitutionError("");
+      await api.renameInstitution(inst.id, { name });
+      setFeedback(t("users.institutionRenamed", { name }));
+      await Promise.all([loadInstitutions(), loadUsers()]);
+    } catch (caught) {
+      setInstitutionError(caught instanceof Error ? caught.message : t("users.saveFailed"));
+    } finally { setInstitutionSaving(false); }
+  };
   const openEdit = (row: UserRecord) => {
     setEditError("");
     setEditing(row);
@@ -197,8 +227,8 @@ export default function AdminUsers() {
       name: row.name === "--" ? "" : row.name,
       role: row.role,
       department: row.department === "--" ? "" : row.department,
-      managerId: "",
       institutionId: row.institutionId ?? "",
+      newInstitutionName: "",
       password: "",
     });
     setEditOpen(true);
@@ -218,6 +248,11 @@ export default function AdminUsers() {
       setEditError(t("users.pwdMinLength"));
       return;
     }
+    const creatingInstitution = isSystemAdmin && editForm.role !== "system_admin" && editForm.institutionId === NEW_INSTITUTION;
+    if (creatingInstitution && !editForm.newInstitutionName.trim()) {
+      setEditError(t("users.institutionNameRequired"));
+      return;
+    }
     try {
       setActionId(editing.id);
       setEditError("");
@@ -228,15 +263,17 @@ export default function AdminUsers() {
       };
       if (isSystemAdmin) {
         payload.role = editForm.role;
-        if (editForm.role === "operator" && editForm.managerId) payload.managerId = editForm.managerId;
-        if (editForm.role === "institution_admin" && editForm.institutionId) payload.institutionId = editForm.institutionId;
+        if (editForm.role !== "system_admin") {
+          if (creatingInstitution) payload.newInstitutionName = editForm.newInstitutionName.trim();
+          else if (editForm.institutionId) payload.institutionId = editForm.institutionId;
+        }
       }
       if (editForm.password) payload.password = editForm.password;
       await api.updateUser(editing.id, payload);
       setEditOpen(false);
       setEditing(null);
       setFeedback(t("users.updated", { name: username }));
-      await loadUsers();
+      await Promise.all([loadUsers(), loadInstitutions()]);
     } catch (caught) {
       setEditError(caught instanceof Error ? caught.message : t("users.saveFailed"));
     } finally {
@@ -273,7 +310,7 @@ export default function AdminUsers() {
       label: t("users.colInstitution"),
       width: "180px",
       render: (_value, row) => {
-        // 三级模型：系统管理员无上级；机构管理员的上级是系统管理员；临床操作员的上级是本机构的机构管理员
+        // 三级模型：系统管理员不属于任何机构；机构管理员显示其机构名称；临床操作员显示其上级（机构管理员）姓名
         if (row.role === "system_admin") return <span className="text-sm text-muted-foreground">--</span>;
         return <span className="text-sm font-medium text-[color:var(--color-text-primary)]">{row.superior || "--"}</span>;
       },
@@ -350,15 +387,28 @@ export default function AdminUsers() {
                 {t("users.subtitle")}
               </p>
             </div>
-            <button
-              className="btn-primary"
-              onClick={() => {
-                setCreateError("");
-                setCreateOpen(true);
-              }}
-            >
-              {t("users.addUser")}
-            </button>
+            <div className="flex items-center gap-3">
+              {isSystemAdmin && (
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setInstitutionError("");
+                    setInstitutionOpen(true);
+                  }}
+                >
+                  {t("users.institutionManage")}
+                </button>
+              )}
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setCreateError("");
+                  setCreateOpen(true);
+                }}
+              >
+                {t("users.addUser")}
+              </button>
+            </div>
           </div>
           {feedback && (
             <div className="border border-blue-200 bg-blue-50 px-4 py-3 rounded-card flex items-center justify-between gap-4">
@@ -408,6 +458,67 @@ export default function AdminUsers() {
           )}
         </div>
       </main>
+      {institutionOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="institution-title"
+        >
+          <div className="card-base w-full max-w-xl p-6 shadow-xl">
+            <h2 id="institution-title" className="text-lg font-semibold text-foreground">
+              {t("users.institutionManage")}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">{t("users.institutionManageHint")}</p>
+            <div className="mt-5 space-y-3">
+              {institutions.length === 0 && (
+                <p className="text-sm text-muted-foreground">{t("users.institutionEmpty")}</p>
+              )}
+              {institutions.map((inst) => (
+                <div key={inst.id} className="flex items-center gap-2">
+                  <input
+                    className="input-base"
+                    value={institutionDrafts[inst.id] ?? inst.name}
+                    onChange={(event) =>
+                      setInstitutionDrafts((prev) => ({ ...prev, [inst.id]: event.target.value }))
+                    }
+                  />
+                  <button
+                    className="btn-secondary shrink-0 px-3 py-2"
+                    disabled={institutionSaving || (institutionDrafts[inst.id] ?? inst.name).trim() === inst.name}
+                    onClick={() => void renameInstitution(inst)}
+                  >
+                    {t("users.save")}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 border-t border-border pt-4">
+              <label className="block text-sm font-semibold">
+                {t("users.newInstitution")}
+                <input
+                  className="input-base mt-2 font-normal"
+                  value={newInstitutionInput}
+                  onChange={(event) => setNewInstitutionInput(event.target.value)}
+                />
+              </label>
+              <div className="mt-3 flex justify-end">
+                <button className="btn-primary" disabled={institutionSaving} onClick={() => void addInstitution()}>
+                  {t("users.add")}
+                </button>
+              </div>
+            </div>
+            {institutionError && (
+              <p className="mt-4 text-sm text-[color:var(--color-error)]">{institutionError}</p>
+            )}
+            <div className="mt-6 flex justify-end">
+              <button className="btn-secondary" onClick={() => setInstitutionOpen(false)}>
+                {t("users.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {createOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
@@ -451,6 +562,7 @@ export default function AdminUsers() {
                       ...prev,
                       role: event.target.value as NewUser["role"],
                       institutionId: event.target.value === "system_admin" ? "" : prev.institutionId,
+                      newInstitutionName: event.target.value === "system_admin" ? "" : prev.newInstitutionName,
                     }))
                   }
                 >
@@ -470,43 +582,38 @@ export default function AdminUsers() {
                   setNewUser((prev) => ({ ...prev, department: value }))
                 }
               />
-              {isSystemAdmin && newUser.role === "operator" && (
-                <label className="block text-sm font-semibold">
-                  {t("users.colSuperior")}
-                  <select
-                    className="input-base mt-2 font-normal"
-                    value={newUser.managerId}
-                    onChange={(event) =>
-                      setNewUser((prev) => ({ ...prev, managerId: event.target.value }))
-                    }
-                  >
-                    <option value="">--</option>
-                    {managers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {isSystemAdmin && newUser.role === "institution_admin" && institutions.length > 1 && (
-                <label className="block text-sm font-semibold">
-                  {t("users.chooseInstitution")}
-                  <select
-                    className="input-base mt-2 font-normal"
-                    value={newUser.institutionId}
-                    onChange={(event) =>
-                      setNewUser((prev) => ({ ...prev, institutionId: event.target.value }))
-                    }
-                  >
-                    <option value="">--</option>
-                    {institutions.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {isSystemAdmin && newUser.role !== "system_admin" && (
+                <>
+                  {institutions.length > 0 && (
+                    <label className="block text-sm font-semibold">
+                      {t("users.chooseInstitution")}
+                      <select
+                        className="input-base mt-2 font-normal"
+                        value={newUser.institutionId}
+                        onChange={(event) =>
+                          setNewUser((prev) => ({ ...prev, institutionId: event.target.value }))
+                        }
+                      >
+                        <option value="">--</option>
+                        {institutions.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.name}
+                          </option>
+                        ))}
+                        <option value={NEW_INSTITUTION}>{t("users.newInstitution")}</option>
+                      </select>
+                    </label>
+                  )}
+                  {(institutions.length === 0 || newUser.institutionId === NEW_INSTITUTION) && (
+                    <Field
+                      label={t("users.institutionName")}
+                      value={newUser.newInstitutionName}
+                      onChange={(value) =>
+                        setNewUser((prev) => ({ ...prev, newInstitutionName: value }))
+                      }
+                    />
+                  )}
+                </>
               )}
               {!isSystemAdmin && (
                 <p className="text-sm text-muted-foreground md:col-span-2">
@@ -592,6 +699,7 @@ export default function AdminUsers() {
                       ...prev,
                       role: event.target.value as UserRecord["role"],
                       institutionId: event.target.value === "system_admin" ? "" : prev.institutionId,
+                      newInstitutionName: event.target.value === "system_admin" ? "" : prev.newInstitutionName,
                     }))
                   }
                 >
@@ -616,43 +724,38 @@ export default function AdminUsers() {
                   setEditForm((prev) => ({ ...prev, department: value }))
                 }
               />
-              {isSystemAdmin && editForm.role === "operator" && (
-                <label className="block text-sm font-semibold">
-                  {t("users.colSuperior")}
-                  <select
-                    className="input-base mt-2 font-normal"
-                    value={editForm.managerId}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({ ...prev, managerId: event.target.value }))
-                    }
-                  >
-                    <option value="">{t("users.keepCurrentManager", { name: editing?.superior || "--" })}</option>
-                    {managers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {isSystemAdmin && editForm.role === "institution_admin" && institutions.length > 1 && (
-                <label className="block text-sm font-semibold">
-                  {t("users.chooseInstitution")}
-                  <select
-                    className="input-base mt-2 font-normal"
-                    value={editForm.institutionId}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({ ...prev, institutionId: event.target.value }))
-                    }
-                  >
-                    <option value="">--</option>
-                    {institutions.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {isSystemAdmin && editForm.role !== "system_admin" && (
+                <>
+                  {institutions.length > 0 && (
+                    <label className="block text-sm font-semibold">
+                      {t("users.chooseInstitution")}
+                      <select
+                        className="input-base mt-2 font-normal"
+                        value={editForm.institutionId}
+                        onChange={(event) =>
+                          setEditForm((prev) => ({ ...prev, institutionId: event.target.value }))
+                        }
+                      >
+                        <option value="">--</option>
+                        {institutions.map((i) => (
+                          <option key={i.id} value={i.id}>
+                            {i.name}
+                          </option>
+                        ))}
+                        <option value={NEW_INSTITUTION}>{t("users.newInstitution")}</option>
+                      </select>
+                    </label>
+                  )}
+                  {(institutions.length === 0 || editForm.institutionId === NEW_INSTITUTION) && (
+                    <Field
+                      label={t("users.institutionName")}
+                      value={editForm.newInstitutionName}
+                      onChange={(value) =>
+                        setEditForm((prev) => ({ ...prev, newInstitutionName: value }))
+                      }
+                    />
+                  )}
+                </>
               )}
               <div className="md:col-span-2">
                 <Field

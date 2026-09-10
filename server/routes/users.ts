@@ -19,7 +19,8 @@ const normalizeUsername = (value: unknown) => { const username = String(value ??
 const usernameError = "用户名需为 2-32 位字母、数字或 . _ -，且不能包含空格。";
 const passwordError = "密码至少需要 12 位。";
 const institutionRequiredError = "请选择所属机构。";
-const managerRequiredError = "请选择上级管理员。";
+const institutionNameRequiredError = "请填写机构名称。";
+const institutionDuplicateError = "机构名称已存在。";
 const invalidRoleError = "无效的角色。";
 const adminOnlyError = "仅系统管理员可管理管理员账户。";
 
@@ -28,16 +29,27 @@ const loadInstitutionMap = async () => {
   return new Map(institutions.map((i) => [i.id, { name: i.name, admin: i.users.filter((u) => u.role === "institution_admin").map((u) => u.displayName).join("、") || null }]));
 };
 
-const firstInstitutionId = async (): Promise<string | null> => (await db.institution.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
+const normalizeInstitutionName = (value: unknown) => String(value ?? "").trim();
+const nextInstitutionCode = () => `INST-${Date.now().toString(36).toUpperCase()}`;
 
-// 界面不再暴露“机构”概念：机构只作为分组依据，由所选上级管理员推导得出
-const resolveInstitutionFromManager = async (managerId: unknown, fallbackInstitutionId?: unknown): Promise<string | null> => {
-  if (typeof managerId === "string" && managerId) {
-    const manager = await db.user.findUnique({ where: { id: managerId }, select: { role: true, institutionId: true } });
-    if (manager?.role === "institution_admin" && manager.institutionId) return manager.institutionId;
+// 创建机构：同名机构直接复用（用于“创建账号时就地新建机构”）
+const ensureInstitution = async (name: unknown, code?: unknown) => {
+  const normalized = normalizeInstitutionName(name);
+  if (!normalized) return null;
+  const existing = await db.institution.findUnique({ where: { name: normalized } });
+  if (existing) return existing;
+  const nextCode = (typeof code === "string" && code.trim()) || nextInstitutionCode();
+  return db.institution.create({ data: { name: normalized, code: nextCode } });
+};
+
+// 解析账号归属机构：可选已有机构，也可填写新机构名称（同时创建）。系统管理员账号不调用此函数
+const resolveInstitutionId = async (body: any): Promise<string | null> => {
+  if (typeof body?.institutionId === "string" && body.institutionId) {
+    const existing = await db.institution.findUnique({ where: { id: body.institutionId }, select: { id: true } });
+    if (existing) return existing.id;
   }
-  if (typeof fallbackInstitutionId === "string" && fallbackInstitutionId) return fallbackInstitutionId;
-  return null;
+  const created = await ensureInstitution(body?.newInstitutionName, body?.newInstitutionCode);
+  return created?.id ?? null;
 };
 
 router.get("/", requireRoles("system_admin", "institution_admin"), async (req: any, res) => {
@@ -48,15 +60,13 @@ router.get("/", requireRoles("system_admin", "institution_admin"), async (req: a
   if (typeof req.query.role === "string") users = users.filter((user) => user.role === req.query.role);
   const page = Math.max(1, Number(req.query.page || 1));
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 20)));
-  // 上级管理员名单用于「机构管理员 → 系统管理员」这一级展示
-  const systemAdminNames = (await db.user.findMany({ where: { role: "system_admin" }, select: { displayName: true } })).map((u) => u.displayName).join("、") || null;
   res.json({
     success: true,
     data: {
       list: users.slice((page - 1) * pageSize, page * pageSize).map((user) => {
         const inst = user.role !== "system_admin" && user.institutionId ? instMap.get(user.institutionId) : undefined;
-        // 三级模型：系统管理员无上级；机构管理员的上级是系统管理员；临床操作员的上级是本机构的机构管理员
-        const superior = user.role === "system_admin" ? null : user.role === "institution_admin" ? systemAdminNames : inst?.admin || null;
+        // 三级模型：系统管理员不属于任何机构；机构管理员的「机构」显示所在机构名称；临床操作员显示其上级（机构管理员）姓名
+        const superior = user.role === "system_admin" ? null : user.role === "institution_admin" ? inst?.name || null : inst?.admin || null;
         return { ...present(user), institutionName: inst?.name || null, institutionAdmin: inst?.admin || null, superior };
       }),
       total: users.length,
@@ -71,6 +81,32 @@ router.get("/institutions", requireRoles("system_admin", "institution_admin"), a
   const list = req.user.role === "system_admin" ? institutions : institutions.filter((i) => i.id === req.user.institutionId);
   const data = list.map((i) => ({ id: i.id, name: i.name, code: i.code, admin: i.users.filter((u) => u.role === "institution_admin").map((u) => u.displayName).join("、") || null }));
   res.json({ success: true, data });
+});
+
+// 机构维护（仅系统管理员）：新增 / 改名 / 启停
+router.post("/institutions", requireRoles("system_admin"), async (req: any, res) => {
+  const name = normalizeInstitutionName(req.body?.name);
+  if (!name) return res.status(400).json({ success: false, message: institutionNameRequiredError });
+  if (await db.institution.findUnique({ where: { name } })) return res.status(409).json({ success: false, message: institutionDuplicateError });
+  const code = (typeof req.body?.code === "string" && req.body.code.trim()) || nextInstitutionCode();
+  try {
+    const created = await db.institution.create({ data: { name, code } });
+    await audit(req.user.id, "create", "Institution", created.id);
+    res.status(201).json({ success: true, data: { id: created.id, name: created.name, code: created.code } });
+  } catch {
+    res.status(409).json({ success: false, message: institutionDuplicateError });
+  }
+});
+
+router.put("/institutions/:id", requireRoles("system_admin"), async (req: any, res) => {
+  const existing = await db.institution.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ success: false, message: "Institution not found." });
+  const name = normalizeInstitutionName(req.body?.name) || existing.name;
+  const clash = await db.institution.findUnique({ where: { name } });
+  if (clash && clash.id !== existing.id) return res.status(409).json({ success: false, message: institutionDuplicateError });
+  const updated = await db.institution.update({ where: { id: existing.id }, data: { name, active: typeof req.body?.active === "boolean" ? req.body.active : undefined } });
+  await audit(req.user.id, "update", "Institution", updated.id);
+  res.json({ success: true, data: { id: updated.id, name: updated.name, code: updated.code, active: updated.active } });
 });
 
 router.get("/:id", requireRoles("system_admin", "institution_admin"), async (req: any, res) => {
@@ -92,12 +128,9 @@ router.post("/", requireRoles("system_admin", "institution_admin"), async (req: 
     role = isRole(req.body?.role) ? req.body.role : "operator";
     if (role === "system_admin") {
       institutionId = null; // 系统管理员不归属机构
-    } else if (role === "operator") {
-      // 临床操作员由所选上级管理员（机构管理员）决定归属
-      institutionId = await resolveInstitutionFromManager(req.body?.managerId, req.body?.institutionId);
-      if (!institutionId) return res.status(400).json({ success: false, message: managerRequiredError });
     } else {
-      institutionId = (typeof req.body?.institutionId === "string" && req.body.institutionId) || (await firstInstitutionId());
+      // 机构管理员 / 临床操作员：可选已有机构，也可就地新建机构并赋予该账号
+      institutionId = await resolveInstitutionId(req.body);
       if (!institutionId) return res.status(400).json({ success: false, message: institutionRequiredError });
     }
   } else {
@@ -133,12 +166,8 @@ router.put("/:id", requireRoles("system_admin", "institution_admin"), async (req
     data.role = targetRole;
     if (targetRole === "system_admin") {
       data.institutionId = null; // 系统管理员不归属机构
-    } else if (targetRole === "operator") {
-      const nextInstitutionId = (await resolveInstitutionFromManager(req.body?.managerId, req.body?.institutionId)) || existing.institutionId;
-      if (!nextInstitutionId) return res.status(400).json({ success: false, message: managerRequiredError });
-      data.institutionId = nextInstitutionId;
     } else {
-      const nextInstitutionId = (typeof req.body?.institutionId === "string" && req.body.institutionId) || existing.institutionId || (await firstInstitutionId());
+      const nextInstitutionId = (await resolveInstitutionId(req.body)) || existing.institutionId;
       if (!nextInstitutionId) return res.status(400).json({ success: false, message: institutionRequiredError });
       data.institutionId = nextInstitutionId;
     }

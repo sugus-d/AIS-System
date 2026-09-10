@@ -311,6 +311,14 @@ class ApiClient {
     return this.request<any>('/users/institutions');
   }
 
+  async createInstitution(data: { name: string; code?: string }) {
+    return this.request<any>('/users/institutions', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async renameInstitution(id: string, data: { name?: string; active?: boolean }) {
+    return this.request<any>(`/users/institutions/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
   // ============ 用户管理 ============
   async getUsers(params: { page?: number; pageSize?: number; keyword?: string; role?: string } = {}) {
     const query = new URLSearchParams();

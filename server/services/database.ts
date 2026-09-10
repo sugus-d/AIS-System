@@ -66,14 +66,14 @@ const adapter = new PrismaBetterSqlite3({ url: databasePath });
 export const db = new PrismaClient({ adapter });
 export const localPaths = { dataRoot, databasePath, scans: path.join(dataRoot, "data", "mesh"), results: path.join(dataRoot, "results"), logs: path.join(dataRoot, "logs") };
 
-type InitialAdmin = { username: string; password: string; displayName?: string; department?: string; institutionName?: string; institutionCode?: string };
+type InitialAdmin = { username: string; password: string; displayName?: string; department?: string };
 export async function ensureInitialAdmin() {
   if (await db.user.count()) return;
   const configPath = process.env.AIS_INITIAL_ADMIN_FILE || path.join(process.cwd(), "deployment", "initial-admin.json");
   if (!existsSync(configPath)) throw new Error(`未找到首次部署管理员配置：${configPath}`);
   const initial = JSON.parse(readFileSync(configPath, "utf8")) as InitialAdmin;
   if (!initial.username || !initial.password || initial.password.length < 6) throw new Error("首次部署管理员配置无效，密码至少需要 6 位。");
-  await db.institution.upsert({ where: { code: initial.institutionCode || "LOCAL-DEFAULT" }, update: {}, create: { id: "local-default-institution", name: initial.institutionName || "本地默认机构", code: initial.institutionCode || "LOCAL-DEFAULT" } });
+  // 首次运行只创建系统管理员账号：系统管理员不归属任何机构，机构在后续创建账号时按需创建
   await db.user.create({ data: { username: initial.username, passwordHash: await bcrypt.hash(initial.password, 12), displayName: initial.displayName || initial.username, department: initial.department, institutionId: null, role: "system_admin" } });
   renameSync(configPath, `${configPath}.consumed`);
 }
