@@ -14,8 +14,7 @@ type UserRecord = {
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
   institutionId: string | null;
-  institutionName?: string;
-  institutionAdmin?: string | null;
+  superior: string | null;
   createTime: string;
   status: "active" | "disabled";
 };
@@ -24,6 +23,7 @@ type NewUser = {
   name: string;
   role: "system_admin" | "institution_admin" | "operator";
   department: string;
+  managerId: string;
   institutionId: string;
   password: string;
 };
@@ -34,11 +34,13 @@ const roleLabels: Record<UserRecord["role"], string> = {
   operator: "enums.roleOperator",
 };
 type InstitutionOption = { id: string; name: string; admin: string | null };
+type ManagerOption = { id: string; name: string; institutionId: string | null };
 const initialNewUser: NewUser = {
   username: "",
   name: "",
   role: "operator",
   department: "",
+  managerId: "",
   institutionId: "",
   password: "",
 };
@@ -67,8 +69,7 @@ const toRecord = (user: any): UserRecord => ({
   role: user.role,
   department: user.department || "--",
   institutionId: user.institutionId ?? null,
-  institutionName: user.institutionName || undefined,
-  institutionAdmin: user.institutionAdmin || null,
+  superior: user.superior ?? null,
   createTime: formatDate(user.createdAt),
   status: user.status === "disabled" ? "disabled" : "active",
 });
@@ -80,6 +81,7 @@ export default function AdminUsers() {
     role === "admin" || role === "system_admin" || role === "institution_admin";
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
+  const [managers, setManagers] = useState<ManagerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -89,7 +91,7 @@ export default function AdminUsers() {
   const [createError, setCreateError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<UserRecord | null>(null);
-  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; institutionId: string; password: string }>({ username: "", name: "", role: "operator", department: "", institutionId: "", password: "" });
+  const [editForm, setEditForm] = useState<{ username: string; name: string; role: UserRecord["role"]; department: string; managerId: string; institutionId: string; password: string }>({ username: "", name: "", role: "operator", department: "", managerId: "", institutionId: "", password: "" });
   const [editError, setEditError] = useState("");
 
   const loadUsers = async () => {
@@ -148,15 +150,16 @@ export default function AdminUsers() {
       setCreateError(t("users.nameRequired"));
       return;
     }
-    if (isSystemAdmin && newUser.role !== "system_admin" && !newUser.institutionId) {
-      setCreateError(t("users.institutionRequired"));
+    if (isSystemAdmin && newUser.role === "operator" && !newUser.managerId) {
+      setCreateError(t("users.managerRequired"));
       return;
     }
     try {
       setActionId("create");
       setCreateError("");
-      const payload: any = { ...newUser, username: newUser.username.trim() };
-      if (isSystemAdmin && newUser.role !== "system_admin") payload.institutionId = newUser.institutionId;
+      const payload: any = { username: newUser.username.trim(), name: newUser.name, role: newUser.role, department: newUser.department, password: newUser.password };
+      if (isSystemAdmin && newUser.role === "operator") payload.managerId = newUser.managerId;
+      if (isSystemAdmin && newUser.role === "institution_admin" && newUser.institutionId) payload.institutionId = newUser.institutionId;
       const createdUser = await api.createUser(payload);
       setCreateOpen(false);
       setNewUser(initialNewUser);
@@ -175,6 +178,17 @@ export default function AdminUsers() {
   useEffect(() => {
     if (isSystemAdmin) api.getInstitutions().then(setInstitutions).catch(() => undefined);
   }, [isSystemAdmin]);
+  useEffect(() => {
+    if (!isSystemAdmin) return;
+    api.getUsers({ role: "institution_admin", pageSize: 100 })
+      .then((result: any) => {
+        const list: ManagerOption[] = (result?.list || result?.data?.list || []).map((u: any) => ({ id: u.id, name: u.name || u.username, institutionId: u.institutionId ?? null }));
+        setManagers(list);
+        // 只有一个上级管理员时直接预选，减少一次点击
+        if (list.length === 1) setNewUser((prev) => (prev.managerId ? prev : { ...prev, managerId: list[0].id }));
+      })
+      .catch(() => undefined);
+  }, [isSystemAdmin]);
   const openEdit = (row: UserRecord) => {
     setEditError("");
     setEditing(row);
@@ -183,6 +197,7 @@ export default function AdminUsers() {
       name: row.name === "--" ? "" : row.name,
       role: row.role,
       department: row.department === "--" ? "" : row.department,
+      managerId: "",
       institutionId: row.institutionId ?? "",
       password: "",
     });
@@ -199,10 +214,6 @@ export default function AdminUsers() {
       setEditError(t("users.nameRequired"));
       return;
     }
-    if (isSystemAdmin && editForm.role !== "system_admin" && !editForm.institutionId) {
-      setEditError(t("users.institutionRequired"));
-      return;
-    }
     if (editForm.password && editForm.password.length < 12) {
       setEditError(t("users.pwdMinLength"));
       return;
@@ -217,7 +228,8 @@ export default function AdminUsers() {
       };
       if (isSystemAdmin) {
         payload.role = editForm.role;
-        if (editForm.role !== "system_admin") payload.institutionId = editForm.institutionId;
+        if (editForm.role === "operator" && editForm.managerId) payload.managerId = editForm.managerId;
+        if (editForm.role === "institution_admin" && editForm.institutionId) payload.institutionId = editForm.institutionId;
       }
       if (editForm.password) payload.password = editForm.password;
       await api.updateUser(editing.id, payload);
@@ -257,23 +269,13 @@ export default function AdminUsers() {
     },
     { key: "department", label: t("users.colDepartment"), width: "140px" },
     {
-      key: "institutionName",
-      label: t("users.colInstitution"),
-      width: "200px",
+      key: "superior",
+      label: t("users.colSuperior"),
+      width: "180px",
       render: (_value, row) => {
-        // 三级模型：系统管理员不归属机构；机构管理员显示所辖机构；临床操作员显示所属机构 + 由机构管理员管辖
-        if (row.role === "system_admin") {
-          return <p className="text-sm text-muted-foreground">--</p>;
-        }
-        const inst = row.institutionName || "--";
-        return (
-          <div>
-            <p className="text-sm font-medium text-[color:var(--color-text-primary)]">{inst}</p>
-            {row.role === "operator" && row.institutionAdmin ? (
-              <p className="mt-0.5 text-xs text-muted-foreground">{t("users.governedBy", { admin: row.institutionAdmin })}</p>
-            ) : null}
-          </div>
-        );
+        // 三级模型：系统管理员无上级；机构管理员的上级是系统管理员；临床操作员的上级是本机构的机构管理员
+        if (row.role === "system_admin") return <span className="text-sm text-muted-foreground">--</span>;
+        return <span className="text-sm font-medium text-[color:var(--color-text-primary)]">{row.superior || "--"}</span>;
       },
     },
     { key: "createTime", label: t("users.colCreateTime"), width: "165px", sortable: true },
@@ -468,7 +470,26 @@ export default function AdminUsers() {
                   setNewUser((prev) => ({ ...prev, department: value }))
                 }
               />
-              {isSystemAdmin && newUser.role !== "system_admin" && (
+              {isSystemAdmin && newUser.role === "operator" && (
+                <label className="block text-sm font-semibold">
+                  {t("users.colSuperior")}
+                  <select
+                    className="input-base mt-2 font-normal"
+                    value={newUser.managerId}
+                    onChange={(event) =>
+                      setNewUser((prev) => ({ ...prev, managerId: event.target.value }))
+                    }
+                  >
+                    <option value="">--</option>
+                    {managers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {isSystemAdmin && newUser.role === "institution_admin" && institutions.length > 1 && (
                 <label className="block text-sm font-semibold">
                   {t("users.chooseInstitution")}
                   <select
@@ -595,7 +616,26 @@ export default function AdminUsers() {
                   setEditForm((prev) => ({ ...prev, department: value }))
                 }
               />
-              {isSystemAdmin && editForm.role !== "system_admin" && (
+              {isSystemAdmin && editForm.role === "operator" && (
+                <label className="block text-sm font-semibold">
+                  {t("users.colSuperior")}
+                  <select
+                    className="input-base mt-2 font-normal"
+                    value={editForm.managerId}
+                    onChange={(event) =>
+                      setEditForm((prev) => ({ ...prev, managerId: event.target.value }))
+                    }
+                  >
+                    <option value="">{t("users.keepCurrentManager", { name: editing?.superior || "--" })}</option>
+                    {managers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {isSystemAdmin && editForm.role === "institution_admin" && institutions.length > 1 && (
                 <label className="block text-sm font-semibold">
                   {t("users.chooseInstitution")}
                   <select

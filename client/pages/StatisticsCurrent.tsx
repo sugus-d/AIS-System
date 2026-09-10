@@ -124,12 +124,14 @@ export default function StatisticsPage() {
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTo")}
                 <input type="date" className={selectCls} value={filters.dateTo || ""} onChange={(e) => setFilter("dateTo", e.target.value)} />
               </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterInstitution")}
-                <select className={selectCls} value={filters.institutionId || ""} onChange={(e) => setFilter("institutionId", e.target.value)}>
-                  <option value="">{t("stats.filterAll")}</option>
-                  {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-                </select>
-              </label>
+              {institutions.length > 1 && (
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterInstitution")}
+                  <select className={selectCls} value={filters.institutionId || ""} onChange={(e) => setFilter("institutionId", e.target.value)}>
+                    <option value="">{t("stats.filterAll")}</option>
+                    {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </select>
+                </label>
+              )}
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterDepartment")}
                 <select className={selectCls} value={filters.department || ""} onChange={(e) => setFilter("department", e.target.value)}>
                   <option value="">{t("stats.filterAll")}</option>

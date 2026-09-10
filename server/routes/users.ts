@@ -19,12 +19,25 @@ const normalizeUsername = (value: unknown) => { const username = String(value ??
 const usernameError = "用户名需为 2-32 位字母、数字或 . _ -，且不能包含空格。";
 const passwordError = "密码至少需要 12 位。";
 const institutionRequiredError = "请选择所属机构。";
+const managerRequiredError = "请选择上级管理员。";
 const invalidRoleError = "无效的角色。";
 const adminOnlyError = "仅系统管理员可管理管理员账户。";
 
 const loadInstitutionMap = async () => {
   const institutions = await db.institution.findMany({ include: { users: { select: { displayName: true, role: true } } } });
   return new Map(institutions.map((i) => [i.id, { name: i.name, admin: i.users.filter((u) => u.role === "institution_admin").map((u) => u.displayName).join("、") || null }]));
+};
+
+const firstInstitutionId = async (): Promise<string | null> => (await db.institution.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
+
+// 界面不再暴露“机构”概念：机构只作为分组依据，由所选上级管理员推导得出
+const resolveInstitutionFromManager = async (managerId: unknown, fallbackInstitutionId?: unknown): Promise<string | null> => {
+  if (typeof managerId === "string" && managerId) {
+    const manager = await db.user.findUnique({ where: { id: managerId }, select: { role: true, institutionId: true } });
+    if (manager?.role === "institution_admin" && manager.institutionId) return manager.institutionId;
+  }
+  if (typeof fallbackInstitutionId === "string" && fallbackInstitutionId) return fallbackInstitutionId;
+  return null;
 };
 
 router.get("/", requireRoles("system_admin", "institution_admin"), async (req: any, res) => {
@@ -35,12 +48,16 @@ router.get("/", requireRoles("system_admin", "institution_admin"), async (req: a
   if (typeof req.query.role === "string") users = users.filter((user) => user.role === req.query.role);
   const page = Math.max(1, Number(req.query.page || 1));
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize || 20)));
+  // 上级管理员名单用于「机构管理员 → 系统管理员」这一级展示
+  const systemAdminNames = (await db.user.findMany({ where: { role: "system_admin" }, select: { displayName: true } })).map((u) => u.displayName).join("、") || null;
   res.json({
     success: true,
     data: {
       list: users.slice((page - 1) * pageSize, page * pageSize).map((user) => {
         const inst = user.role !== "system_admin" && user.institutionId ? instMap.get(user.institutionId) : undefined;
-        return { ...present(user), institutionName: inst?.name || null, institutionAdmin: inst?.admin || null };
+        // 三级模型：系统管理员无上级；机构管理员的上级是系统管理员；临床操作员的上级是本机构的机构管理员
+        const superior = user.role === "system_admin" ? null : user.role === "institution_admin" ? systemAdminNames : inst?.admin || null;
+        return { ...present(user), institutionName: inst?.name || null, institutionAdmin: inst?.admin || null, superior };
       }),
       total: users.length,
       page,
@@ -75,8 +92,12 @@ router.post("/", requireRoles("system_admin", "institution_admin"), async (req: 
     role = isRole(req.body?.role) ? req.body.role : "operator";
     if (role === "system_admin") {
       institutionId = null; // 系统管理员不归属机构
+    } else if (role === "operator") {
+      // 临床操作员由所选上级管理员（机构管理员）决定归属
+      institutionId = await resolveInstitutionFromManager(req.body?.managerId, req.body?.institutionId);
+      if (!institutionId) return res.status(400).json({ success: false, message: managerRequiredError });
     } else {
-      institutionId = typeof req.body?.institutionId === "string" && req.body.institutionId ? req.body.institutionId : null;
+      institutionId = (typeof req.body?.institutionId === "string" && req.body.institutionId) || (await firstInstitutionId());
       if (!institutionId) return res.status(400).json({ success: false, message: institutionRequiredError });
     }
   } else {
@@ -112,8 +133,12 @@ router.put("/:id", requireRoles("system_admin", "institution_admin"), async (req
     data.role = targetRole;
     if (targetRole === "system_admin") {
       data.institutionId = null; // 系统管理员不归属机构
+    } else if (targetRole === "operator") {
+      const nextInstitutionId = (await resolveInstitutionFromManager(req.body?.managerId, req.body?.institutionId)) || existing.institutionId;
+      if (!nextInstitutionId) return res.status(400).json({ success: false, message: managerRequiredError });
+      data.institutionId = nextInstitutionId;
     } else {
-      const nextInstitutionId = typeof req.body?.institutionId === "string" && req.body.institutionId ? req.body.institutionId : existing.institutionId;
+      const nextInstitutionId = (typeof req.body?.institutionId === "string" && req.body.institutionId) || existing.institutionId || (await firstInstitutionId());
       if (!nextInstitutionId) return res.status(400).json({ success: false, message: institutionRequiredError });
       data.institutionId = nextInstitutionId;
     }
