@@ -4,6 +4,7 @@ import { Router } from "express";
 import { db, audit } from "../services/database";
 import { canAccessCase } from "../middleware/access";
 import { severityZh } from "../services/algorithm";
+import { exportLabels, resolveExportLang, severityLabel } from "../services/export-labels";
 
 const router = Router();
 const images = new Set(["curvature_mean", "curvature_gauss", "roughness", "normal_angle", "landmarks", "back", "moire", "waterfall"]);
@@ -35,15 +36,27 @@ router.get("/:id/versions", async (req: any, res) => { const report = await db.r
 router.get("/:id/export", async (req: any, res) => {
   const report = await db.report.findUnique({ where: { id: req.params.id }, include: { case: true, file: true } });
   if (!report || !canAccessCase(req.user, report.case)) return res.status(404).json({ success: false, message: "Report not found." });
-  const result = decode(report); const title = `AIS 报告 ${report.case.caseNumber || report.id}`;
-  const document = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${html(title)}</title><style>body{font-family:Arial,'Microsoft YaHei',sans-serif;margin:36px;color:#172033}h1{font-size:24px}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #cbd5e1;padding:9px;text-align:left}th{width:34%;background:#eff6ff}@media print{body{margin:14mm}}</style><h1>${html(title)}</h1><p>生成时间：${html(new Date().toLocaleString("zh-CN"))}</p><table><tr><th>病例编号</th><td>${html(report.case.caseNumber)}</td></tr><tr><th>姓名</th><td>${html(report.case.name)}</td></tr><tr><th>Cobb 角</th><td>${html(report.cobbAngle)}°</td></tr><tr><th>AIS 等级</th><td>${html(severityZh(report.severity))}</td></tr><tr><th>算法等级</th><td>${html(report.severity)}</td></tr><tr><th>模型版本</th><td>${html(report.modelId)}</td></tr><tr><th>扫描时间</th><td>${html(report.file.scanTime || report.file.createdAt)}</td></tr><tr><th>临床数据</th><td><pre>${html(JSON.stringify(result.clinical || {}, null, 2))}</pre></td></tr></table></html>`;
+  const result = decode(report); const lang = resolveExportLang(req); const labels = exportLabels(lang);
+  const title = `${labels.reportTitle} ${report.case.caseNumber || report.id}`;
+  const rows: Array<[string, string]> = [
+    [labels.caseNumber, html(report.case.caseNumber)],
+    [labels.name, html(report.case.name)],
+    [labels.cobbAngle, `${html(report.cobbAngle)}°`],
+    [labels.aisLevel, html(severityLabel(report.severity, lang))],
+    [labels.algorithmLevel, html(report.severity)],
+    [labels.modelVersion, html(report.modelId)],
+    [labels.scanTime, html(report.file.scanTime || report.file.createdAt)],
+    [labels.clinicalData, `<pre>${html(JSON.stringify(result.clinical || {}, null, 2))}</pre>`],
+  ];
+  const document = `<!doctype html><html lang="${lang}"><meta charset="utf-8"><title>${html(title)}</title><style>body{font-family:Arial,'Microsoft YaHei',sans-serif;margin:36px;color:#172033}h1{font-size:24px}table{border-collapse:collapse;width:100%;margin-top:20px}th,td{border:1px solid #cbd5e1;padding:9px;text-align:left}th{width:34%;background:#eff6ff}@media print{body{margin:14mm}}</style><h1>${html(title)}</h1><p>${labels.generatedAt}：${html(new Date().toLocaleString(lang))}</p><table>${rows.map(([label, value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join("")}</table></html>`;
   res.setHeader("Content-Type", "text/html; charset=utf-8"); res.setHeader("Content-Disposition", `attachment; filename="${report.case.caseNumber || report.id}-AIS-report.html"`); return res.send(document);
 });
 router.post("/batchExport", async (req: any, res) => {
   const ids = Array.isArray(req.body?.reportIds) ? req.body.reportIds.filter((id: unknown): id is string => typeof id === "string") : undefined;
   const reports = await db.report.findMany({ where: ids?.length ? { id: { in: ids } } : undefined, include: { case: true, file: true }, orderBy: { createdAt: "desc" } });
   const allowed = reports.filter((report) => canAccessCase(req.user, report.case));
-  const body = [["报告ID", "病例编号", "姓名", "Cobb角", "AIS等级", "模型版本", "生成时间"], ...allowed.map((report) => [report.id, report.case.caseNumber, report.case.name, report.cobbAngle, severityZh(report.severity), report.modelId, report.createdAt.toISOString()])].map((row) => row.map(csv).join(",")).join("\r\n");
+  const lang = resolveExportLang(req); const labels = exportLabels(lang);
+  const body = [[labels.csvReportId, labels.csvCaseNumber, labels.csvName, labels.csvCobbAngle, labels.csvAisLevel, labels.csvModelVersion, labels.csvGeneratedAt], ...allowed.map((report) => [report.id, report.case.caseNumber, report.case.name, report.cobbAngle, severityLabel(report.severity, lang), report.modelId, report.createdAt.toISOString()])].map((row) => row.map(csv).join(",")).join("\r\n");
   res.setHeader("Content-Type", "text/csv; charset=utf-8"); res.setHeader("Content-Disposition", 'attachment; filename="AIS-reports.csv"'); return res.send(`\uFEFF${body}`);
 });
 export default router;

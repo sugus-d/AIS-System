@@ -27,6 +27,8 @@ class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      // 让服务端渲染的导出内容（CSV / HTML）跟随当前界面语言
+      'Accept-Language': i18next.language || 'zh-CN',
       ...options.headers as Record<string, string>,
     };
 
@@ -145,10 +147,9 @@ class ApiClient {
     form.append('caseId', data.caseId);
     form.append('file', data.file);
     if (data.scanTime) form.append('scanTime', data.scanTime);
-    const token = this.getToken();
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}/files`, { method: 'POST', body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      response = await fetch(`${API_BASE}/files`, { method: 'POST', body: form, headers: this.plainHeaders() });
     } catch {
       throw new Error(i18next.t("api.networkError"));
     }
@@ -157,12 +158,20 @@ class ApiClient {
     return result.data;
   }
 
+  // 非 JSON 请求（上传/下载）同样带上语言与鉴权头
+  private plainHeaders(): Record<string, string> {
+    const token = this.getToken();
+    return {
+      'Accept-Language': i18next.language || 'zh-CN',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }
+
   // 下载文件原始内容（3D PLY 查看用）
   async downloadFile(fileId: string): Promise<ArrayBuffer> {
-    const token = this.getToken();
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}/files/${fileId}/download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      response = await fetch(`${API_BASE}/files/${fileId}/download`, { headers: this.plainHeaders() });
     } catch {
       throw new Error(i18next.t("api.networkError"));
     }
@@ -172,10 +181,9 @@ class ApiClient {
 
   // 标注平台最新 3D mesh（笔刷编辑后 ROI / 算法 ROI / 原始）用于 3D 查看
   async downloadMesh(fileId: string): Promise<ArrayBuffer> {
-    const token = this.getToken();
     let response: Response;
     try {
-      response = await fetch(`${API_BASE}/files/${fileId}/mesh`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      response = await fetch(`${API_BASE}/files/${fileId}/mesh`, { headers: this.plainHeaders() });
     } catch {
       throw new Error(i18next.t("api.networkError"));
     }

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "../services/database";
 import { canAccessCase } from "../middleware/access";
+import { exportLabels, resolveExportLang, severityLabel } from "../services/export-labels";
 
 const router = Router();
 const severity = [{ name: "Normal", color: "#22c55e" }, { name: "Mild", color: "#eab308" }, { name: "Moderate", color: "#f97316" }, { name: "Severe", color: "#ef4444" }];
@@ -184,14 +185,15 @@ router.post("/export", async (req: any, res) => {
   const cases = await scoped(req.user);
   const { caseById, reports: allReports } = flatten(cases);
   const reports = filterReports(allReports, caseById, req.query);
+  const lang = resolveExportLang(req); const labels = exportLabels(lang);
   const body = [
-    ["指标", "数值"],
-    ["病例数", new Set(reports.map((r) => r.caseId)).size],
-    ["分析报告数", reports.length],
-    ["正常", reports.filter((item) => item.severity === "Normal").length],
-    ["轻度", reports.filter((item) => item.severity === "Mild").length],
-    ["中度", reports.filter((item) => item.severity === "Moderate").length],
-    ["重度", reports.filter((item) => item.severity === "Severe").length],
+    [labels.metric, labels.value],
+    [labels.caseCount, new Set(reports.map((r) => r.caseId)).size],
+    [labels.reportCount, reports.length],
+    [severityLabel("Normal", lang), reports.filter((item) => item.severity === "Normal").length],
+    [severityLabel("Mild", lang), reports.filter((item) => item.severity === "Mild").length],
+    [severityLabel("Moderate", lang), reports.filter((item) => item.severity === "Moderate").length],
+    [severityLabel("Severe", lang), reports.filter((item) => item.severity === "Severe").length],
   ].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\r\n");
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", "attachment; filename=\"AIS-statistics.csv\"");
