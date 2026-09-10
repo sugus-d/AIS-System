@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
 import DataTable, { Column } from "@/components/DataTable";
+import PasswordInput from "@/components/PasswordInput";
 import { confirmDialog } from "@/components/ConfirmDialog";
 import api from "@/lib/api";
 
@@ -783,12 +784,16 @@ function Field({
   return (
     <label className="block text-sm font-semibold">
       {label}
-      <input
-        className="input-base mt-2 font-normal"
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {type === "password" ? (
+        <PasswordInput className="input-base font-normal" wrapperClassName="mt-2" value={value} onChange={onChange} />
+      ) : (
+        <input
+          className="input-base mt-2 font-normal"
+          type={type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
     </label>
   );
 }

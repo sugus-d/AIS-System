@@ -7,6 +7,7 @@ import LocaleSwitcher from "@/components/LocaleSwitcher";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import PasswordInput from "@/components/PasswordInput";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
@@ -109,7 +110,11 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      {type === "password" ? (
+        <PasswordInput variant="ui" value={value} onChange={onChange} />
+      ) : (
+        <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
     </div>
   );
 }

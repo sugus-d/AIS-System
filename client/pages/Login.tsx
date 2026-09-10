@@ -6,6 +6,7 @@ import LocaleSwitcher from "@/components/LocaleSwitcher";
 import logoUrl from "@/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import PasswordInput from "@/components/PasswordInput";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -106,7 +107,14 @@ export default function Login() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="login-password">{t("login.password")}</Label>
-              <Input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={loading} />
+              <PasswordInput
+                variant="ui"
+                id="login-password"
+                autoComplete="current-password"
+                value={password}
+                onChange={setPassword}
+                disabled={loading}
+              />
             </div>
             <div className="flex items-center gap-2 pt-1">
               <Checkbox id="login-remember" checked={remember} onCheckedChange={(checked) => setRemember(checked === true)} />

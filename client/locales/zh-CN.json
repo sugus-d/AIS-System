@@ -1,6 +1,8 @@
 {
   "common": {
     "cancel": "取消",
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
     "close": "关闭",
     "confirm": "确定",
     "save": "保存",
