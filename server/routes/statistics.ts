@@ -92,19 +92,42 @@ router.get("/overview", async (req: any, res) => {
   const reports = filterReports(allReports, caseById, req.query);
   const distinctCases = new Set(reports.map((r) => r.caseId)).size;
   const count = (name: string) => reports.filter((report) => report.severity === name).length;
-  const avg = reports.length ? reports.reduce((total, report) => total + report.cobbAngle, 0) / reports.length : 0;
   const caseTotal = hasReportLevelFilter(req.query) ? distinctCases : baseCases.length;
+
+  // ① 受检者状态（当前档案状态快照，口径与“能否发起分析”一致）
+  const inFlightCases = new Set(tasks.filter((task) => task.status === "pending" || task.status === "running").map((task) => task.caseId));
+  const hasBasicInfo = (item: any) => Boolean(item.gender && item.heightCm > 0 && item.weightKg > 0);
+  const hasScanFile = (item: any) => (item.files || []).some((file: any) => String(file.originalName || "").toLowerCase().endsWith(".ply"));
+  let analyzedCases = 0; let analyzingCases = 0; let pendingCases = 0; let insufficientCases = 0;
+  for (const item of baseCases) {
+    if (item.reports.length > 0) { analyzedCases += 1; continue; }
+    if (inFlightCases.has(item.id)) { analyzingCases += 1; continue; }
+    if (hasBasicInfo(item) && hasScanFile(item)) pendingCases += 1; else insufficientCases += 1;
+  }
+
+  // ② 分析结果：以每位受检者的最新报告为准（与 AIS 分级口径一致）
+  const latest = latestPerCase(reports);
+  const latestCount = latest.length;
+  const avg = latestCount ? latest.reduce((total, report) => total + report.cobbAngle, 0) / latestCount : 0;
+  const rate = (predicate: (report: any) => boolean) => (latestCount ? (latest.filter(predicate).length * 100 / latestCount).toFixed(1) : "0");
+
+  // ③ 分析运行：当前筛选范围内的报告 / 成功 / 成功率 / 待审核
+  const reportSuccess = reports.filter((report) => !report.task || report.task.status === "success").length;
+  const pendingReview = reports.filter((report) => !report.review?.status || report.review.status === "under_review").length;
+
   res.json({
     success: true,
     data: {
       cases: { total: caseTotal, male: baseCases.filter((item) => /male|男/i.test(item.gender)).length, female: baseCases.filter((item) => /female|女/i.test(item.gender)).length },
+      caseStatus: { total: baseCases.length, analyzed: analyzedCases, analyzing: analyzingCases, pending: pendingCases, insufficient: insufficientCases },
       files: { total: baseCases.reduce((total, item) => total + item.files.length, 0) },
-      reports: { total: reports.length, completed: reports.filter((report) => report.annotationStatus === "approved").length },
+      reports: { total: reports.length, completed: reports.filter((report) => report.annotationStatus === "approved").length, success: reportSuccess, pendingReview, successRate: reports.length ? (reportSuccess * 100 / reports.length).toFixed(1) : "0" },
       aisDistribution: { normal: count("Normal"), mild: count("Mild"), moderate: count("Moderate"), severe: count("Severe") },
       tasks: { total: tasks.length, success: tasks.filter((task) => task.status === "success").length, failed: tasks.filter((task) => task.status === "failed").length, successRate: tasks.length ? (tasks.filter((task) => task.status === "success").length * 100 / tasks.length).toFixed(1) : "0" },
       metrics: {
         avgCobbAngle: avg.toFixed(1),
-        positiveRate: reports.length ? (reports.filter((report) => report.severity !== "Normal").length * 100 / reports.length).toFixed(1) : "0",
+        positiveRate: rate((report) => report.severity !== "Normal"),
+        moderateOrAboveRate: rate((report) => report.severity === "Moderate" || report.severity === "Severe"),
       },
     },
   });

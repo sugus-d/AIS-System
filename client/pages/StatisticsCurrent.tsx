@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, FileStack, RefreshCw, RotateCcw, ScanLine, Users } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
@@ -10,10 +10,11 @@ import api from "@/lib/api";
 
 type Overview = {
   cases: { total: number };
+  caseStatus: { total: number; analyzed: number; analyzing: number; pending: number; insufficient: number };
   files: { total: number };
-  reports: { total: number; completed: number };
+  reports: { total: number; completed: number; success: number; pendingReview: number; successRate: string };
   tasks: { total: number; successRate: string };
-  metrics: { avgCobbAngle: string; positiveRate: string };
+  metrics: { avgCobbAngle: string; positiveRate: string; moderateOrAboveRate: string };
 };
 
 type Distribution = { name: string; value: number; color?: string };
@@ -120,13 +121,6 @@ export default function StatisticsPage() {
     void load(next);
   };
 
-  const metrics = [
-    { label: t("stats.totalCases"), value: overview?.cases.total, icon: Users, tone: "bg-blue-50 text-blue-700" },
-    { label: t("stats.scanFiles"), value: overview?.files.total, icon: FileStack, tone: "bg-emerald-50 text-emerald-700" },
-    { label: t("stats.generatedReports"), value: overview?.reports.total, icon: ScanLine, tone: "bg-amber-50 text-amber-700" },
-    { label: t("stats.taskSuccessRate"), value: overview ? `${overview.tasks.successRate}%` : undefined, icon: BarChart3, tone: "bg-rose-50 text-rose-700" },
-  ];
-
   return (
     <div className="layout-main">
       <Sidebar isAdmin={isAdmin} />
@@ -203,67 +197,49 @@ export default function StatisticsPage() {
             </section>
           ) : (
             <>
-              {/* 首行三卡并列：核心指标（合并）+ 报告与风险指标 + AIS 分级 */}
-              <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" aria-label={t("stats.chartCoreMetrics")}>
+              {/* 首行三卡：受检者状态 / 分析结果 / 分析运行 */}
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
                 <Card className="border-border/80 p-4 md:p-5">
                   <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground">{t("stats.chartCoreMetrics")}</h2>
+                    <h2 className="text-base font-semibold text-foreground">{t("stats.caseStatusTitle")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.caseStatusHint")}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-                    {metrics.map(({ label, value, icon: Icon, tone }) => (
-                      <div key={label}>
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${tone}`}><Icon size={15} /></span>
-                          <p className="text-xs text-muted-foreground">{label}</p>
-                        </div>
-                        <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{loading ? "--" : value ?? 0}</p>
-                      </div>
-                    ))}
+                    <Stat label={t("stats.casesCreated")} value={overview?.caseStatus.total} loading={loading} />
+                    <Stat label={t("stats.casesAnalyzed")} value={overview?.caseStatus.analyzed} loading={loading} />
+                    <Stat label={t("stats.casesAnalyzing")} value={overview?.caseStatus.analyzing} loading={loading} />
+                    <Stat label={t("stats.casesPendingAnalysis")} value={overview?.caseStatus.pending} loading={loading} />
+                    <Stat label={t("stats.casesInsufficient")} value={overview?.caseStatus.insufficient} loading={loading} />
                   </div>
                 </Card>
 
                 <Card className="border-border/80 p-4 md:p-5">
                   <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground">{t("stats.riskTitle")}</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.riskHint")}</p>
+                    <h2 className="text-base font-semibold text-foreground">{t("stats.resultTitle")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.resultHint")}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-                    <Stat label={t("stats.completedReports")} value={overview?.reports.completed} loading={loading} />
-                    <Stat label={t("stats.analysisTasks")} value={overview?.tasks.total} loading={loading} />
+                  <div className="space-y-4">
                     <Stat label={t("stats.avgCobb")} value={overview ? `${overview.metrics.avgCobbAngle}°` : undefined} loading={loading} />
                     <Stat label={t("stats.positiveRate")} value={overview ? `${overview.metrics.positiveRate}%` : undefined} loading={loading} />
+                    <Stat label={t("stats.moderateOrAboveRate")} value={overview ? `${overview.metrics.moderateOrAboveRate}%` : undefined} loading={loading} />
                   </div>
                 </Card>
 
                 <Card className="border-border/80 p-4 md:p-5">
-                  <div className="mb-2">
-                    <h2 className="text-base font-semibold text-foreground">{t("stats.aisTitle")}</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.aisHint")}</p>
+                  <div className="mb-4">
+                    <h2 className="text-base font-semibold text-foreground">{t("stats.runTitle")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.runHint")}</p>
                   </div>
-                  <div className="h-[150px]" aria-label={t("stats.chartAisLabel")}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={aisData} dataKey="value" nameKey="name" innerRadius={36} outerRadius={58} paddingAngle={3}>
-                          {aisData.map((item, index) => <Cell key={item.name} fill={item.color || pieColors[index]} />)}
-                        </Pie>
-                        <Tooltip formatter={(value: number) => [value, t("stats.tooltipCases")]} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                    {aisData.map((item, index) => (
-                      <div className="flex items-center justify-between gap-2" key={item.name}>
-                        <span className="flex items-center gap-1.5 text-muted-foreground">
-                          <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color || pieColors[index] }} />
-                          {aisNameKey(item.name) ? t(aisNameKey(item.name)) : item.name}
-                        </span>
-                        <strong className="tabular-nums text-foreground">{item.value}</strong>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                    <Stat label={t("stats.totalReports")} value={overview?.reports.total} loading={loading} />
+                    <Stat label={t("stats.analysisSuccess")} value={overview?.reports.success} loading={loading} />
+                    <Stat label={t("stats.successRate")} value={overview ? `${overview.reports.successRate}%` : undefined} loading={loading} />
+                    <Stat label={t("stats.pendingReview")} value={overview?.reports.pendingReview} loading={loading} />
                   </div>
                 </Card>
               </section>
 
+              {/* 第二行：新增受检者数量趋势 + AIS 分级 */}
               <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
@@ -283,7 +259,37 @@ export default function StatisticsPage() {
                   </div>
                 </Card>
 
-                {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1） */}
+                <Card className="border-border/80 p-5 md:p-6">
+                  <div className="mb-3">
+                    <h2 className="text-lg font-semibold text-foreground">{t("stats.aisTitle")}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.aisHint")}</p>
+                  </div>
+                  <div className="h-[300px]" aria-label={t("stats.chartAisLabel")}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={aisData} dataKey="value" nameKey="name" innerRadius={70} outerRadius={110} paddingAngle={3}>
+                          {aisData.map((item, index) => <Cell key={item.name} fill={item.color || pieColors[index]} />)}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => [value, t("stats.tooltipCases")]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    {aisData.map((item, index) => (
+                      <div className="flex items-center justify-between gap-2" key={item.name}>
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color || pieColors[index] }} />
+                          {aisNameKey(item.name) ? t(aisNameKey(item.name)) : item.name}
+                        </span>
+                        <strong className="tabular-nums text-foreground">{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </section>
+
+              {/* 第三行：医生分析统计（整行，柱状图更舒展） */}
+              <section>
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.doctorTitle")}</h2>
