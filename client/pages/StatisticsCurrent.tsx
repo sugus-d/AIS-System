@@ -140,27 +140,38 @@ export default function StatisticsPage() {
           {/* 筛选栏：时间 / 机构 / 科室 / 人员 */}
           <Card className="border-border/80 p-4">
             <div className="flex flex-wrap items-end gap-3">
+              {/* 分析时间：快捷范围与手动日期合并为一组 */}
               <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                <span>{t("stats.rangeQuick")}</span>
-                <div className="flex items-center gap-1.5">
+                <span>{t("stats.filterTime")}</span>
+                <div className="flex h-10 flex-wrap items-center gap-1 rounded-md border border-input bg-background px-1.5">
                   {(["day", "week", "month"] as const).map((kind) => (
                     <button
                       key={kind}
                       type="button"
                       onClick={() => applyPreset(kind)}
-                      className={`h-10 rounded-md border px-3 text-sm transition-colors ${preset === kind ? "border-primary bg-primary/10 font-semibold text-primary" : "border-input text-muted-foreground hover:bg-muted"}`}
+                      className={`h-7 rounded px-2.5 text-sm transition-colors ${preset === kind ? "bg-primary/10 font-semibold text-primary" : "text-muted-foreground hover:bg-muted"}`}
                     >
                       {kind === "day" ? t("stats.rangeDay") : kind === "week" ? t("stats.rangeWeek") : t("stats.rangeMonth")}
                     </button>
                   ))}
+                  <span className="mx-0.5 h-6 w-px shrink-0 bg-border" />
+                  <input
+                    type="date"
+                    aria-label={t("stats.filterTime")}
+                    className="h-7 rounded bg-transparent px-1 text-sm text-foreground focus-visible:outline-none"
+                    value={filters.dateFrom || ""}
+                    onChange={(e) => setFilter("dateFrom", e.target.value)}
+                  />
+                  <span className="text-muted-foreground">~</span>
+                  <input
+                    type="date"
+                    aria-label={t("stats.filterTime")}
+                    className="h-7 rounded bg-transparent px-1 text-sm text-foreground focus-visible:outline-none"
+                    value={filters.dateTo || ""}
+                    onChange={(e) => setFilter("dateTo", e.target.value)}
+                  />
                 </div>
               </div>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTimeFrom")}
-                <input type="date" className={selectCls} value={filters.dateFrom || ""} onChange={(e) => setFilter("dateFrom", e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTo")}
-                <input type="date" className={selectCls} value={filters.dateTo || ""} onChange={(e) => setFilter("dateTo", e.target.value)} />
-              </label>
               {institutions.length > 0 && (
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterInstitution")}
                   <select className={selectCls} value={filters.institutionId || ""} onChange={(e) => setFilter("institutionId", e.target.value)}>

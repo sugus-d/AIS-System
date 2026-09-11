@@ -293,6 +293,7 @@
     "trendTitle": "新增受检者数量",
     "trendHint": "统计范围：{{from}} ~ {{to}}",
     "rangeQuick": "快捷时间",
+    "filterTime": "分析时间",
     "rangeDay": "一天",
     "rangeWeek": "一周",
     "rangeMonth": "一月",
