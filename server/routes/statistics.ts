@@ -119,7 +119,7 @@ router.get("/overview", async (req: any, res) => {
     success: true,
     data: {
       cases: { total: caseTotal, male: baseCases.filter((item) => /male|男/i.test(item.gender)).length, female: baseCases.filter((item) => /female|女/i.test(item.gender)).length },
-      caseStatus: { total: baseCases.length, analyzed: analyzedCases, analyzing: analyzingCases, pending: pendingCases, insufficient: insufficientCases },
+      caseStatus: { total: baseCases.length, analyzed: analyzedCases, analyzing: analyzingCases, pending: pendingCases, waiting: analyzingCases + pendingCases, insufficient: insufficientCases },
       files: { total: baseCases.reduce((total, item) => total + item.files.length, 0) },
       reports: { total: reports.length, completed: reports.filter((report) => report.annotationStatus === "approved").length, success: reportSuccess, pendingReview, successRate: reports.length ? (reportSuccess * 100 / reports.length).toFixed(1) : "0" },
       aisDistribution: { normal: count("Normal"), mild: count("Mild"), moderate: count("Moderate"), severe: count("Severe") },
@@ -128,6 +128,7 @@ router.get("/overview", async (req: any, res) => {
         avgCobbAngle: avg.toFixed(1),
         positiveRate: rate((report) => report.severity !== "Normal"),
         moderateOrAboveRate: rate((report) => report.severity === "Moderate" || report.severity === "Severe"),
+        severeRate: rate((report) => report.severity === "Severe"),
       },
     },
   });

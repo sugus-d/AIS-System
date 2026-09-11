@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, RotateCcw } from "lucide-react";
+import { Activity, AlertOctagon, AlertTriangle, CheckCircle2, ClipboardList, Clock, FileText, Percent, RefreshCw, RotateCcw, Ruler, ShieldAlert, Users, type LucideIcon } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
@@ -10,11 +10,11 @@ import api from "@/lib/api";
 
 type Overview = {
   cases: { total: number };
-  caseStatus: { total: number; analyzed: number; analyzing: number; pending: number; insufficient: number };
+  caseStatus: { total: number; analyzed: number; analyzing: number; pending: number; waiting: number; insufficient: number };
   files: { total: number };
   reports: { total: number; completed: number; success: number; pendingReview: number; successRate: string };
   tasks: { total: number; successRate: string };
-  metrics: { avgCobbAngle: string; positiveRate: string; moderateOrAboveRate: string };
+  metrics: { avgCobbAngle: string; positiveRate: string; moderateOrAboveRate: string; severeRate: string };
 };
 
 type Distribution = { name: string; value: number; color?: string };
@@ -208,19 +208,18 @@ export default function StatisticsPage() {
             </section>
           ) : (
             <>
-              {/* 首行三卡：受检者状态 / 分析结果 / 分析运行 */}
-              <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              {/* 首行三卡：受检者状态 / 分析结果 / 分析运行（窄屏才折成两行） */}
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Card className="border-border/80 p-4 md:p-5">
                   <div className="mb-4">
                     <h2 className="text-base font-semibold text-foreground">{t("stats.caseStatusTitle")}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">{t("stats.caseStatusHint")}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-                    <Stat label={t("stats.casesCreated")} value={overview?.caseStatus.total} loading={loading} />
-                    <Stat label={t("stats.casesAnalyzed")} value={overview?.caseStatus.analyzed} loading={loading} />
-                    <Stat label={t("stats.casesAnalyzing")} value={overview?.caseStatus.analyzing} loading={loading} />
-                    <Stat label={t("stats.casesPendingAnalysis")} value={overview?.caseStatus.pending} loading={loading} />
-                    <Stat label={t("stats.casesInsufficient")} value={overview?.caseStatus.insufficient} loading={loading} />
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-5">
+                    <Stat label={t("stats.casesCreated")} value={overview?.caseStatus.total} loading={loading} icon={Users} tone="bg-blue-50 text-blue-700" />
+                    <Stat label={t("stats.casesAnalyzed")} value={overview?.caseStatus.analyzed} loading={loading} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-700" />
+                    <Stat label={t("stats.casesWaiting")} value={overview?.caseStatus.waiting} loading={loading} icon={Clock} tone="bg-amber-50 text-amber-700" />
+                    <Stat label={t("stats.casesInsufficient")} value={overview?.caseStatus.insufficient} loading={loading} icon={AlertTriangle} tone="bg-rose-50 text-rose-700" />
                   </div>
                 </Card>
 
@@ -229,10 +228,11 @@ export default function StatisticsPage() {
                     <h2 className="text-base font-semibold text-foreground">{t("stats.resultTitle")}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">{t("stats.resultHint")}</p>
                   </div>
-                  <div className="space-y-4">
-                    <Stat label={t("stats.avgCobb")} value={overview ? `${overview.metrics.avgCobbAngle}°` : undefined} loading={loading} />
-                    <Stat label={t("stats.positiveRate")} value={overview ? `${overview.metrics.positiveRate}%` : undefined} loading={loading} />
-                    <Stat label={t("stats.moderateOrAboveRate")} value={overview ? `${overview.metrics.moderateOrAboveRate}%` : undefined} loading={loading} />
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-5">
+                    <Stat label={t("stats.avgCobb")} value={overview ? `${overview.metrics.avgCobbAngle}°` : undefined} loading={loading} icon={Ruler} tone="bg-blue-50 text-blue-700" />
+                    <Stat label={t("stats.positiveRate")} value={overview ? `${overview.metrics.positiveRate}%` : undefined} loading={loading} icon={Activity} tone="bg-amber-50 text-amber-700" />
+                    <Stat label={t("stats.moderateOrAboveRate")} value={overview ? `${overview.metrics.moderateOrAboveRate}%` : undefined} loading={loading} icon={ShieldAlert} tone="bg-orange-50 text-orange-700" />
+                    <Stat label={t("stats.severeRate")} value={overview ? `${overview.metrics.severeRate}%` : undefined} loading={loading} icon={AlertOctagon} tone="bg-rose-50 text-rose-700" />
                   </div>
                 </Card>
 
@@ -241,11 +241,11 @@ export default function StatisticsPage() {
                     <h2 className="text-base font-semibold text-foreground">{t("stats.runTitle")}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">{t("stats.runHint")}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-                    <Stat label={t("stats.totalReports")} value={overview?.reports.total} loading={loading} />
-                    <Stat label={t("stats.analysisSuccess")} value={overview?.reports.success} loading={loading} />
-                    <Stat label={t("stats.successRate")} value={overview ? `${overview.reports.successRate}%` : undefined} loading={loading} />
-                    <Stat label={t("stats.pendingReview")} value={overview?.reports.pendingReview} loading={loading} />
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-5">
+                    <Stat label={t("stats.totalReports")} value={overview?.reports.total} loading={loading} icon={FileText} tone="bg-blue-50 text-blue-700" />
+                    <Stat label={t("stats.analysisSuccess")} value={overview?.reports.success} loading={loading} icon={CheckCircle2} tone="bg-emerald-50 text-emerald-700" />
+                    <Stat label={t("stats.successRate")} value={overview ? `${overview.reports.successRate}%` : undefined} loading={loading} icon={Percent} tone="bg-indigo-50 text-indigo-700" />
+                    <Stat label={t("stats.pendingReview")} value={overview?.reports.pendingReview} loading={loading} icon={ClipboardList} tone="bg-amber-50 text-amber-700" />
                   </div>
                 </Card>
               </section>
@@ -338,11 +338,18 @@ export default function StatisticsPage() {
   );
 }
 
-function Stat({ label, value, loading }: { label: string; value?: string | number; loading: boolean }) {
+function Stat({ label, value, loading, icon: Icon, tone }: { label: string; value?: string | number; loading: boolean; icon?: LucideIcon; tone?: string }) {
   return (
     <div>
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-2 text-xl font-semibold tabular-nums text-foreground">{loading ? "--" : value ?? 0}</p>
+      <div className="flex items-center gap-2">
+        {Icon && (
+          <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${tone || "bg-muted text-muted-foreground"}`}>
+            <Icon size={15} />
+          </span>
+        )}
+        <p className="text-xs text-muted-foreground">{label}</p>
+      </div>
+      <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{loading ? "--" : value ?? 0}</p>
     </div>
   );
 }
