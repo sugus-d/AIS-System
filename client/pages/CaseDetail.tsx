@@ -29,6 +29,7 @@ type FileItem = {
   scanTime?: string;
   status?: string;
   taskStatus?: string;
+  taskError?: string;
   department?: string;
   doctor?: string;
   kind: "scan" | "xray";
@@ -114,10 +115,10 @@ export default function CaseDetail() {
   // 正在删除的扫描文件（筛查报告）id
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (silent = false) => {
     if (!caseId) return;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [cr, rr] = await Promise.all([
         api.getCase(caseId),
         api.getReports({ caseId, pageSize: 100 }),
@@ -134,6 +135,7 @@ export default function CaseDetail() {
           scanTime: f.scanTime,
           status: f.status,
           taskStatus: f.tasks?.[0]?.status,
+          taskError: f.tasks?.[0]?.errorMessage,
           department: f.department ?? undefined,
           doctor: f.doctor ?? undefined,
           kind,
@@ -176,6 +178,14 @@ export default function CaseDetail() {
   useEffect(() => {
     load();
   }, [caseId]);
+
+  // 分析由他人（如临床操作员）发起时，本页也要自动刷新，避免一直停留在“分析中”
+  useEffect(() => {
+    const analyzing = (detail?.files ?? []).some((f) => f.taskStatus === "pending" || f.taskStatus === "running");
+    if (!analyzing) return;
+    const timer = window.setInterval(() => { void load(true); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [detail]);
 
   const files = useMemo(
     () =>
@@ -538,6 +548,13 @@ export default function CaseDetail() {
                       </div>
                     </td>
                   </tr>
+                  {!analyzing && f.taskStatus === "failed" && f.taskError && (
+                    <tr className="border-b bg-red-50/60">
+                      <td colSpan={5} className="px-5 py-2.5 text-sm text-[color:var(--color-error)]">
+                        {translateBackendMessage(f.taskError)}
+                      </td>
+                    </tr>
+                  )}
                   {report?.remarks && (
                     <tr className="border-b bg-slate-50/70">
                       <td colSpan={5} className="px-5 py-2.5">

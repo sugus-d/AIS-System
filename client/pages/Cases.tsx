@@ -48,9 +48,10 @@ export default function Cases() {
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (silent = false) => {
     try {
-      setLoading(true); setError("");
+      if (!silent) setLoading(true);
+      setError("");
       const r = await api.getCases({ pageSize: 100, keyword: keyword || undefined, status: status === "all" ? undefined : status, sortBy: sort, sortOrder: order } as any);
       setItems(r.list || r.data?.list || []);
     } catch (e) { setError(e instanceof Error ? e.message : t("cases.loadFailed")); } finally { setLoading(false); }
@@ -63,6 +64,13 @@ export default function Cases() {
   };
 
   useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [keyword, status, sort, order]);
+
+  // 有档案正在分析时自动刷新，分析结束后状态自动更新
+  useEffect(() => {
+    if (!items.some((item: any) => item.status === "analyzing")) return;
+    const timer = window.setInterval(() => { void load(true); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [items]);
 
   const display = useMemo(() => {
     const arr = [...items];
@@ -120,7 +128,7 @@ export default function Cases() {
             ) : error ? (
               <div className="py-16 text-center">
                 <p className="mb-3 text-destructive">{error}</p>
-                <Button variant="outline" onClick={load}>{t("cases.reload")}</Button>
+                <Button variant="outline" onClick={() => void load()}>{t("cases.reload")}</Button>
               </div>
             ) : display.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground">{t("cases.empty")}</div>
