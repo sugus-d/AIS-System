@@ -59,40 +59,42 @@ router.get("/:id/download", async (req: any, res) => {
   return res.sendFile(path.resolve(file.storedPath));
 });
 
-// 标注平台最新 3D mesh：优先 笔刷编辑后 ROI → 算法 roi.ply → 原始扫描（标注平台 3D 视图同款优先级）
-function resolveLatestMeshPath(caseId: string, fallback: string): string {
+// 某个文件对应的 3D 网格：优先本文件分析产出的 ROI → （档案只有一个扫描文件时）标注编辑后的 ROI → 本文件原始上传
+// 注意：ROI 产物是按“档案 / 分析任务”落盘的，必须按本文件的任务去找，否则会把别的文件的模型显示出来
+async function resolveMeshPathForFile(file: { id: string; caseId: string; storedPath: string }): Promise<{ path: string; source: "analysis" | "annotated" | "original" } | null> {
   const resultsRoot = process.env.AIS_RESULTS_ROOT || localPaths.results;
   try {
-    const labelingDir = path.join(resultsRoot, "labeling", "cache", caseId, "extract_roi");
-    if (existsSync(labelingDir)) {
-      const edited = readdirSync(labelingDir)
-        .filter((name) => name.startsWith("roi_edited_") && name.endsWith(".ply"))
-        .map((name) => path.join(labelingDir, name))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-      if (edited.length) return edited[0];
+    const tasks = await db.analysisTask.findMany({ where: { fileId: file.id }, orderBy: { createdAt: "desc" }, select: { id: true } });
+    for (const task of tasks) {
+      const roi = path.join(resultsRoot, "prediction-outputs", `${file.caseId}-${task.id}`, "roi.ply");
+      if (existsSync(roi)) return { path: roi, source: "analysis" };
     }
-  } catch { /* 忽略目录不存在 */ }
+  } catch { /* 忽略查询异常，继续回退 */ }
   try {
-    const outputsDir = path.join(resultsRoot, "prediction-outputs");
-    if (existsSync(outputsDir)) {
-      const dirs = readdirSync(outputsDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${caseId}-`))
-        .map((entry) => path.join(outputsDir, entry.name))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-      for (const dir of dirs) {
-        const roi = path.join(dir, "roi.ply");
-        if (existsSync(roi)) return roi;
+    const caseFiles = await db.scanFile.findMany({ where: { caseId: file.caseId }, select: { id: true, originalName: true } });
+    const scanFiles = caseFiles.filter((row) => String(row.originalName || "").toLowerCase().endsWith(".ply"));
+    // 标注编辑后的 ROI 只按档案存放，无法区分具体文件：仅在档案只有一个扫描文件时才敢用
+    if (scanFiles.length === 1 && scanFiles[0].id === file.id) {
+      const labelingDir = path.join(resultsRoot, "labeling", "cache", file.caseId, "extract_roi");
+      if (existsSync(labelingDir)) {
+        const edited = readdirSync(labelingDir)
+          .filter((name) => name.startsWith("roi_edited_") && name.endsWith(".ply"))
+          .map((name) => path.join(labelingDir, name))
+          .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+        if (edited.length) return { path: edited[0], source: "annotated" };
       }
     }
-  } catch { /* 忽略目录不存在 */ }
-  return fallback;
+  } catch { /* 忽略目录异常 */ }
+  if (existsSync(file.storedPath)) return { path: file.storedPath, source: "original" };
+  return null;
 }
 router.get("/:id/mesh", async (req: any, res) => {
   const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });
   if (!file || !canAccessCase(req.user, file.case)) return res.status(404).json({ success: false, message: "File not found." });
-  const target = resolveLatestMeshPath(file.caseId, file.storedPath);
-  if (!existsSync(target)) return res.status(404).json({ success: false, message: "Mesh content missing." });
-  return res.sendFile(path.resolve(target));
+  const resolved = await resolveMeshPathForFile(file);
+  if (!resolved) return res.status(404).json({ success: false, message: "Mesh content missing." });
+  res.setHeader("X-AIS-Mesh-Source", resolved.source);
+  return res.sendFile(path.resolve(resolved.path));
 });
 router.delete("/:id", async (req: any, res) => {
   const file = await db.scanFile.findUnique({ where: { id: req.params.id }, include: { case: true } });

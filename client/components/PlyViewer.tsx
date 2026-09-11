@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useTranslation } from "react-i18next";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -7,6 +7,7 @@ import api from "@/lib/api";
 
 // 受检者页面「扫描结果」3D 查看器：
 // 仿标注平台显示样式（暗色背景 + 灯光），仅查看/旋转/缩放/平移，无任何标注功能。
+// 加载中/失败都会给出明确提示，避免出现“一块空白”而无从判断。
 export default function PlyViewer({
   fileId,
   onLoadError,
@@ -16,12 +17,22 @@ export default function PlyViewer({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { t } = useTranslation();
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error"; message?: string }>({ status: "loading" });
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    setState({ status: "loading" });
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch {
+      const message = t("caseDetail.view3dUnsupported");
+      setState({ status: "error", message });
+      onLoadError?.(message);
+      return;
+    }
     renderer.setClearColor(0x0d1117); // 与标注平台一致的暗色背景
     container.appendChild(renderer.domElement);
 
@@ -76,24 +87,52 @@ export default function PlyViewer({
     loop();
 
     let cancelled = false;
+    const fail = (message: string) => {
+      if (disposed) return;
+      setState({ status: "error", message });
+      onLoadError?.(message);
+    };
+
     api
       .downloadMesh(fileId)
       .then((buffer) => {
         if (cancelled || disposed) return;
-        const geometry = new PLYLoader().parse(buffer);
-        const material = new THREE.MeshStandardMaterial({
-          color: 0x9fb6d4,
-          roughness: 0.7,
-          metalness: 0.05,
-          flatShading: true,
-          side: THREE.DoubleSide,
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
-        fitObject(mesh);
+        if (!buffer || buffer.byteLength === 0) {
+          fail(t("caseDetail.view3dEmpty"));
+          return;
+        }
+        let geometry: THREE.BufferGeometry;
+        try {
+          geometry = new PLYLoader().parse(buffer);
+        } catch {
+          fail(t("caseDetail.view3dInvalid"));
+          return;
+        }
+        const position = geometry.attributes.position as THREE.BufferAttribute | undefined;
+        if (!position || position.count === 0) {
+          fail(t("caseDetail.view3dEmpty"));
+          return;
+        }
+        const hasFaces = Boolean(geometry.index && geometry.index.count > 0);
+        // 没有三角面的 PLY（点云）用点渲染，避免“解析成功但一片空白”
+        const object: THREE.Object3D = hasFaces
+          ? new THREE.Mesh(
+              geometry,
+              new THREE.MeshStandardMaterial({
+                color: 0x9fb6d4,
+                roughness: 0.7,
+                metalness: 0.05,
+                flatShading: true,
+                side: THREE.DoubleSide,
+              }),
+            )
+          : new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0x9fb6d4, size: 2, sizeAttenuation: true }));
+        scene.add(object);
+        fitObject(object);
+        setState({ status: "ready" });
       })
       .catch((err) => {
-        if (!disposed) onLoadError?.(err instanceof Error ? err.message : t("common.load3dFailed"));
+        fail(err instanceof Error ? err.message : t("common.load3dFailed"));
       });
 
     return () => {
@@ -103,9 +142,24 @@ export default function PlyViewer({
       ro.disconnect();
       controls.dispose();
       renderer.dispose();
+      // 只 dispose 不会释放 WebGL 上下文：反复展开 3D 会耗尽上下文导致后续空白
+      try {
+        renderer.forceContextLoss();
+      } catch { /* 某些环境不支持，忽略 */ }
       if (renderer.domElement.parentElement === container) container.removeChild(renderer.domElement);
     };
   }, [fileId, onLoadError]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" />
+      {state.status !== "ready" && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center">
+          <span className={`text-sm ${state.status === "error" ? "text-[color:var(--color-error)]" : "text-white/75"}`}>
+            {state.status === "loading" ? t("caseDetail.view3dLoading") : state.message || t("caseDetail.view3dFailed")}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }

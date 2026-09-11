@@ -114,6 +114,8 @@ export default function CaseDetail() {
   const [previewXray, setPreviewXray] = useState<XrayItem | null>(null);
   // 正在删除的扫描文件（筛查报告）id
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  // 3D 查看失败原因（按文件 id）
+  const [meshErrors, setMeshErrors] = useState<Record<string, string>>({});
 
   const load = async (silent = false) => {
     if (!caseId) return;
@@ -578,8 +580,17 @@ export default function CaseDetail() {
                             </span>
                           </div>
                           <div className="h-[480px]">
-                            <PlyViewer key={f.id} fileId={f.id} />
+                            <PlyViewer
+                              key={f.id}
+                              fileId={f.id}
+                              onLoadError={(message) =>
+                                setMeshErrors((prev) => (prev[f.id] === message ? prev : { ...prev, [f.id]: message }))
+                              }
+                            />
                           </div>
+                          {meshErrors[f.id] && (
+                            <p className="mt-2 text-sm text-[color:var(--color-error)]">{meshErrors[f.id]}</p>
+                          )}
                         </div>
                       </td>
                     </tr>
