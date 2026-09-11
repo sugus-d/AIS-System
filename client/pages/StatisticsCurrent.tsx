@@ -250,8 +250,8 @@ export default function StatisticsPage() {
                 </Card>
               </section>
 
-              {/* 第二行：新增受检者数量趋势 + AIS 分级 */}
-              <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              {/* 第二行：新增受检者数量趋势 + AIS 分级 + 医生分析统计（三卡并列） */}
+              <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.trendTitle")}</h2>
@@ -297,10 +297,8 @@ export default function StatisticsPage() {
                     ))}
                   </div>
                 </Card>
-              </section>
 
-              {/* 第三行：医生分析统计（整行，柱状图更舒展） */}
-              <section>
+                {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1） */}
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.doctorTitle")}</h2>
@@ -311,7 +309,7 @@ export default function StatisticsPage() {
                   ) : (
                     <div
                       className="w-full"
-                      style={{ height: Math.min(620, Math.max(300, doctorData.length * 52)) }}
+                      style={{ height: Math.min(420, Math.max(300, doctorData.length * 52)) }}
                       aria-label={t("stats.chartDoctorLabel")}
                     >
                       <ResponsiveContainer width="100%" height="100%">
