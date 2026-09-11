@@ -168,17 +168,51 @@ router.get("/doctor-distribution", async (req: any, res) => {
   res.json({ success: true, data });
 });
 
+// 新增受检者趋势：随所选时间范围联动；一天/一周/一月均按天，更长范围自动按周、按月，且范围内无数据的时段补 0
 router.get("/time-series", async (req: any, res) => {
   const metric = req.query.metric;
   const cases = await scoped(req.user);
-  const caseIds = cases.map((item) => item.id);
-  const rows = metric === "analyses" ? (caseIds.length ? await db.analysisTask.findMany({ where: { caseId: { in: caseIds } } }) : []) : metric === "reports" ? cases.flatMap((item) => item.reports) : cases;
-  const values = new Map<string, number>();
-  for (const row of rows as any[]) {
-    const date = row.createdAt.toISOString().slice(0, 10);
-    values.set(date, (values.get(date) || 0) + 1);
+  const institutionId = typeof req.query.institutionId === "string" && req.query.institutionId ? req.query.institutionId : null;
+  const baseCases = institutionId ? cases.filter((item) => String(item.institutionId || "") === institutionId) : cases;
+  const caseIds = baseCases.map((item) => item.id);
+  const rows: any[] = metric === "analyses"
+    ? (caseIds.length ? await db.analysisTask.findMany({ where: { caseId: { in: caseIds } } }) : [])
+    : metric === "reports" ? baseCases.flatMap((item) => item.reports) : baseCases;
+
+  const today = new Date();
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+  const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  const hasFrom = typeof req.query.dateFrom === "string" && req.query.dateFrom;
+  const hasTo = typeof req.query.dateTo === "string" && req.query.dateTo;
+  const from = hasFrom ? startOfDay(new Date(`${req.query.dateFrom}T00:00:00`)) : startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
+  const to = hasTo ? endOfDay(new Date(`${req.query.dateTo}T00:00:00`)) : endOfDay(today);
+  const spanDays = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86400000) + 1);
+  const granularity: "day" | "week" | "month" = spanDays <= 31 ? "day" : spanDays <= 182 ? "week" : "month";
+
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const weekStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7));
+  const bucketOf = (date: Date) =>
+    granularity === "month" ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}` :
+      granularity === "week" ? `${pad(weekStart(date).getMonth() + 1)}-${pad(weekStart(date).getDate())}` :
+        `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+  // 先铺满时间轴，保证没有数据的时段显示为 0（而不是断线）
+  const labels: string[] = [];
+  if (granularity === "month") {
+    for (const cursor = new Date(from.getFullYear(), from.getMonth(), 1); cursor <= to; cursor.setMonth(cursor.getMonth() + 1)) labels.push(bucketOf(cursor));
+  } else if (granularity === "week") {
+    for (const cursor = weekStart(from); cursor <= to; cursor.setDate(cursor.getDate() + 7)) labels.push(bucketOf(cursor));
+  } else {
+    for (const cursor = new Date(from); cursor <= to; cursor.setDate(cursor.getDate() + 1)) labels.push(bucketOf(cursor));
   }
-  res.json({ success: true, data: [...values.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value })) });
+  const counts = new Map<string, number>(labels.map((label) => [label, 0]));
+  for (const row of rows) {
+    const time = new Date(row.createdAt);
+    if (time < from || time > to) continue;
+    const key = bucketOf(time);
+    if (counts.has(key)) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  res.json({ success: true, data: labels.map((label) => ({ date: granularity === "month" ? label : label.slice(0, 5), value: counts.get(label) || 0 })), granularity, from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) });
 });
 
 router.post("/export", async (req: any, res) => {

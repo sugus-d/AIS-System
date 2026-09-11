@@ -310,8 +310,9 @@ class ApiClient {
     return this.request<any>(`/statistics/doctor-distribution${this.statsQuery(filters)}`);
   }
 
-  async getTimeSeries(metric: string = 'cases', period: string = 'week') {
-    return this.request<any>(`/statistics/time-series?metric=${metric}&period=${period}`);
+  async getTimeSeries(metric: string = 'cases', params: Record<string, string> = {}) {
+    const query = new URLSearchParams({ metric, ...params });
+    return this.request<any>(`/statistics/time-series?${query.toString()}`);
   }
 
   // 机构列表（含机构管理员），供统计筛选 / 用户管理使用

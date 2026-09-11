@@ -26,6 +26,18 @@ const adminRoles = ["admin", "system_admin", "institution_admin"];
 const pieColors = ["#16A34A", "#D97706", "#EA580C", "#DC2626"];
 const selectCls = "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
+// 快捷时间范围：一天 / 一周 / 一月（默认一周，含今天）
+type RangePreset = "day" | "week" | "month" | "custom";
+const isoDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const presetRange = (kind: "day" | "week" | "month"): FilterState => {
+  const today = new Date();
+  const days = kind === "day" ? 0 : kind === "week" ? 6 : 29;
+  return {
+    dateFrom: isoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() - days)),
+    dateTo: isoDate(today),
+  };
+};
+
 // 后端返回的英文等级名 → 翻译 key
 const aisNameKey = (name: string): string => {
   const map: Record<string, string> = { Normal: "enums.severityNegative", Mild: "enums.severityMild", Moderate: "enums.severityModerate", Severe: "enums.severitySevere" };
@@ -54,7 +66,8 @@ export default function StatisticsPage() {
   const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
   const [doctorOptions, setDoctorOptions] = useState<DoctorStat[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<Distribution[]>([]);
-  const [filters, setFilters] = useState<FilterState>({});
+  const [filters, setFilters] = useState<FilterState>(() => presetRange("week"));
+  const [preset, setPreset] = useState<RangePreset>("week");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const isAdmin = adminRoles.includes(sessionStorage.getItem("user_role") || "");
@@ -66,31 +79,46 @@ export default function StatisticsPage() {
     api.getCasesDistribution("department").then(setDepartmentOptions).catch(() => undefined);
   }, []);
 
-  const activeFilters = (): Record<string, string> => {
+  const queryOf = (source: FilterState): Record<string, string> => {
     const q: Record<string, string> = {};
-    (Object.keys(filters) as (keyof FilterState)[]).forEach((key) => {
-      const value = filters[key];
+    (Object.keys(source) as (keyof FilterState)[]).forEach((key) => {
+      const value = source[key];
       if (value) q[key] = value;
     });
     return q;
   };
 
-  const load = async () => {
+  const load = async (override?: FilterState) => {
     try {
       setLoading(true); setError("");
-      const q = activeFilters();
-      const [nextOverview, ais, doctors, trend] = await Promise.all([api.getStatistics(q), api.getAISDistribution(q), api.getDoctorDistribution(q), api.getTimeSeries("cases", "week")]);
+      const q = queryOf(override ?? filters);
+      const [nextOverview, ais, doctors, trend] = await Promise.all([api.getStatistics(q), api.getAISDistribution(q), api.getDoctorDistribution(q), api.getTimeSeries("cases", q)]);
       setOverview(nextOverview);
       setAisData(ais);
       setDoctorData(doctors);
-      setTrendData(trend.map((item: TrendPoint) => ({ ...item, date: item.date.slice(5) })));
+      // 趋势随所选时间范围联动（后端按范围聚合：≤14天按天、≤120天按周、更长按月）
+      setTrendData(Array.isArray(trend) ? trend : []);
     } catch (caught) { setError(caught instanceof Error ? caught.message : t("stats.loadFailed")); } finally { setLoading(false); }
   };
 
   useEffect(() => { void load(); }, []);
 
-  const setFilter = (key: keyof FilterState, value: string) => setFilters((prev) => ({ ...prev, [key]: value }));
-  const resetFilters = () => setFilters({});
+  const setFilter = (key: keyof FilterState, value: string) => {
+    setPreset("custom");
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+  const applyPreset = (kind: "day" | "week" | "month") => {
+    const next = { ...filters, ...presetRange(kind) };
+    setPreset(kind);
+    setFilters(next);
+    void load(next);
+  };
+  const resetFilters = () => {
+    const next = presetRange("week");
+    setPreset("week");
+    setFilters(next);
+    void load(next);
+  };
 
   const metrics = [
     { label: t("stats.totalCases"), value: overview?.cases.total, icon: Users, tone: "bg-blue-50 text-blue-700" },
@@ -118,6 +146,21 @@ export default function StatisticsPage() {
           {/* 筛选栏：时间 / 机构 / 科室 / 人员 */}
           <Card className="border-border/80 p-4">
             <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <span>{t("stats.rangeQuick")}</span>
+                <div className="flex items-center gap-1.5">
+                  {(["day", "week", "month"] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => applyPreset(kind)}
+                      className={`h-10 rounded-md border px-3 text-sm transition-colors ${preset === kind ? "border-primary bg-primary/10 font-semibold text-primary" : "border-input text-muted-foreground hover:bg-muted"}`}
+                    >
+                      {kind === "day" ? t("stats.rangeDay") : kind === "week" ? t("stats.rangeWeek") : t("stats.rangeMonth")}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTimeFrom")}
                 <input type="date" className={selectCls} value={filters.dateFrom || ""} onChange={(e) => setFilter("dateFrom", e.target.value)} />
               </label>
@@ -225,7 +268,7 @@ export default function StatisticsPage() {
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.trendTitle")}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.trendHint")}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.trendHint", { from: filters.dateFrom || "--", to: filters.dateTo || "--" })}</p>
                   </div>
                   <div className="h-[300px]" aria-label={t("stats.chartTrendLabel")}>
                     <ResponsiveContainer width="100%" height="100%">
