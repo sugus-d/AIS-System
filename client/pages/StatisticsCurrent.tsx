@@ -160,16 +160,65 @@ export default function StatisticsPage() {
             </section>
           ) : (
             <>
-              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={t("stats.chartCoreMetrics")}>
-                {metrics.map(({ label, value, icon: Icon, tone }) => (
-                  <Card key={label} className="border-border/80 p-5">
-                    <div className="flex items-start justify-between">
-                      <p className="text-sm text-muted-foreground">{label}</p>
-                      <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${tone}`}><Icon size={20} /></span>
-                    </div>
-                    <p className="mt-5 text-3xl font-semibold tabular-nums text-foreground">{loading ? "--" : value ?? 0}</p>
-                  </Card>
-                ))}
+              {/* 首行三卡并列：核心指标（合并）+ 报告与风险指标 + AIS 分级 */}
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" aria-label={t("stats.chartCoreMetrics")}>
+                <Card className="border-border/80 p-4 md:p-5">
+                  <div className="mb-4">
+                    <h2 className="text-base font-semibold text-foreground">{t("stats.chartCoreMetrics")}</h2>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                    {metrics.map(({ label, value, icon: Icon, tone }) => (
+                      <div key={label}>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${tone}`}><Icon size={15} /></span>
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                        </div>
+                        <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{loading ? "--" : value ?? 0}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card className="border-border/80 p-4 md:p-5">
+                  <div className="mb-4">
+                    <h2 className="text-base font-semibold text-foreground">{t("stats.riskTitle")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.riskHint")}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                    <Stat label={t("stats.completedReports")} value={overview?.reports.completed} loading={loading} />
+                    <Stat label={t("stats.analysisTasks")} value={overview?.tasks.total} loading={loading} />
+                    <Stat label={t("stats.avgCobb")} value={overview ? `${overview.metrics.avgCobbAngle}°` : undefined} loading={loading} />
+                    <Stat label={t("stats.positiveRate")} value={overview ? `${overview.metrics.positiveRate}%` : undefined} loading={loading} />
+                  </div>
+                </Card>
+
+                <Card className="border-border/80 p-4 md:p-5">
+                  <div className="mb-2">
+                    <h2 className="text-base font-semibold text-foreground">{t("stats.aisTitle")}</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("stats.aisHint")}</p>
+                  </div>
+                  <div className="h-[150px]" aria-label={t("stats.chartAisLabel")}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={aisData} dataKey="value" nameKey="name" innerRadius={36} outerRadius={58} paddingAngle={3}>
+                          {aisData.map((item, index) => <Cell key={item.name} fill={item.color || pieColors[index]} />)}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => [value, t("stats.tooltipCases")]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                    {aisData.map((item, index) => (
+                      <div className="flex items-center justify-between gap-2" key={item.name}>
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color || pieColors[index] }} />
+                          {aisNameKey(item.name) ? t(aisNameKey(item.name)) : item.name}
+                        </span>
+                        <strong className="tabular-nums text-foreground">{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
               </section>
 
               <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -221,48 +270,6 @@ export default function StatisticsPage() {
                 </Card>
               </section>
 
-              <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <Card className="border-border/80 p-5 md:p-6">
-                  <div className="mb-5">
-                    <h2 className="text-lg font-semibold text-foreground">{t("stats.riskTitle")}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.riskHint")}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    <Stat label={t("stats.completedReports")} value={overview?.reports.completed} loading={loading} />
-                    <Stat label={t("stats.analysisTasks")} value={overview?.tasks.total} loading={loading} />
-                    <Stat label={t("stats.avgCobb")} value={overview ? `${overview.metrics.avgCobbAngle}°` : undefined} loading={loading} />
-                    <Stat label={t("stats.positiveRate")} value={overview ? `${overview.metrics.positiveRate}%` : undefined} loading={loading} />
-                  </div>
-                </Card>
-
-                <Card className="border-border/80 p-5 md:p-6">
-                  <div className="mb-3">
-                    <h2 className="text-lg font-semibold text-foreground">{t("stats.aisTitle")}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">{t("stats.aisHint")}</p>
-                  </div>
-                  <div className="h-[210px]" aria-label={t("stats.chartAisLabel")}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={aisData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={80} paddingAngle={3}>
-                          {aisData.map((item, index) => <Cell key={item.name} fill={item.color || pieColors[index]} />)}
-                        </Pie>
-                        <Tooltip formatter={(value: number) => [value, t("stats.tooltipCases")]} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-                    {aisData.map((item, index) => (
-                      <div className="flex items-center justify-between gap-2 text-sm" key={item.name}>
-                        <span className="flex items-center gap-2 text-muted-foreground">
-                          <i className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color || pieColors[index] }} />
-                          {aisNameKey(item.name) ? t(aisNameKey(item.name)) : item.name}
-                        </span>
-                        <strong className="text-foreground">{item.value}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              </section>
             </>
           )}
         </div>
