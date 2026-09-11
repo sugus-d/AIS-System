@@ -124,7 +124,7 @@ export default function StatisticsPage() {
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterTo")}
                 <input type="date" className={selectCls} value={filters.dateTo || ""} onChange={(e) => setFilter("dateTo", e.target.value)} />
               </label>
-              {institutions.length > 1 && (
+              {institutions.length > 0 && (
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t("stats.filterInstitution")}
                   <select className={selectCls} value={filters.institutionId || ""} onChange={(e) => setFilter("institutionId", e.target.value)}>
                     <option value="">{t("stats.filterAll")}</option>
