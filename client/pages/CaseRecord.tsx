@@ -18,7 +18,12 @@ const inputCls = "flex h-10 w-full rounded-md border border-input bg-background 
 export default function CaseRecord() {
   const navigate = useNavigate(); const { t } = useTranslation(); const [params] = useSearchParams(); const caseId = params.get("caseId"); const isEdit = Boolean(caseId);
   const isAdmin = sessionStorage.getItem("user_role") === "admin";
+  const isSystemAdmin = ["system_admin", "admin"].includes(sessionStorage.getItem("user_role") || "");
   const [form, setForm] = useState<FormData>(empty()); const [loading, setLoading] = useState(false);
+  const [institutions, setInstitutions] = useState<{ id: string; name: string }[]>([]);
+  const [institutionId, setInstitutionId] = useState("");
+
+  useEffect(() => { if (isSystemAdmin) api.getInstitutions().then(setInstitutions).catch(() => undefined); }, [isSystemAdmin]);
 
   useEffect(() => { if (!caseId) return; api.getCase(caseId).then((r: any) => { const c = r.case || r; setForm({ name: c.name || "", gender: c.gender === "female" || c.gender === "女" ? "female" : c.gender ? "male" : "", birthday: c.birthDate ? String(c.birthDate).slice(0, 10) : "", height: String(c.height || ""), weight: String(c.weight || ""), idNumber: c.idNumber || "", phone: c.phone || "", medicalHistory: c.medicalHistory || "" }); }); }, [caseId]);
 
@@ -27,9 +32,14 @@ export default function CaseRecord() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.gender || !form.birthday || !form.height || !form.weight) { toast.error(t("caseRecord.validation")); return; }
+    if (isSystemAdmin && !isEdit) {
+      if (institutions.length === 0) { toast.error(t("caseRecord.noInstitution")); return; }
+      if (institutions.length > 1 && !institutionId) { toast.error(t("caseRecord.institutionRequired")); return; }
+    }
     try {
       setLoading(true);
-      const data = { name: form.name, gender: form.gender, birthDate: form.birthday, height: Number(form.height), weight: Number(form.weight), idNumber: form.idNumber, phone: form.phone, medicalHistory: form.medicalHistory };
+      const data: any = { name: form.name, gender: form.gender, birthDate: form.birthday, height: Number(form.height), weight: Number(form.weight), idNumber: form.idNumber, phone: form.phone, medicalHistory: form.medicalHistory };
+      if (isSystemAdmin && !isEdit && institutionId) data.institutionId = institutionId;
       if (isEdit && caseId) await api.updateCase(caseId, data); else await api.createCase(data);
       navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases");
     } catch (err: any) { toast.error(err?.message || t("caseRecord.saveFailed")); } finally { setLoading(false); }
@@ -67,6 +77,18 @@ export default function CaseRecord() {
                 <Field label={t("caseRecord.birthday")} name="birthday" type="date" value={form.birthday} onChange={change} required />
                 <Field label={t("caseRecord.height")} name="height" type="number" value={form.height} onChange={change} required />
                 <Field label={t("caseRecord.weight")} name="weight" type="number" value={form.weight} onChange={change} required />
+                {isSystemAdmin && !isEdit && institutions.length === 0 && (
+                  <p className="text-sm text-destructive md:col-span-2">{t("caseRecord.noInstitution")}</p>
+                )}
+                {isSystemAdmin && !isEdit && institutions.length > 1 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="institutionId">{t("caseRecord.institution")}<span className="ml-0.5 text-destructive">*</span></Label>
+                    <select id="institutionId" className={inputCls} value={institutionId} onChange={(e) => setInstitutionId(e.target.value)}>
+                      <option value="">{t("caseRecord.selectInstitution")}</option>
+                      {institutions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <Field label={t("caseRecord.idNumber")} name="idNumber" value={form.idNumber} onChange={change} />
                 <Field label={t("caseRecord.phone")} name="phone" value={form.phone} onChange={change} />
                 <div className="space-y-2 md:col-span-2">
@@ -76,7 +98,7 @@ export default function CaseRecord() {
               </CardContent>
               <div className="flex justify-end gap-3 border-t border-border/60 px-8 py-5">
                 <Button type="button" variant="outline" onClick={() => navigate(isEdit && caseId ? `/case-detail/${caseId}` : "/cases")}>{t("caseRecord.cancel")}</Button>
-                <Button type="submit" disabled={loading}>{loading ? t("caseRecord.saving") : t("caseRecord.save")}</Button>
+                <Button type="submit" disabled={loading || (isSystemAdmin && !isEdit && institutions.length === 0)}>{loading ? t("caseRecord.saving") : t("caseRecord.save")}</Button>
               </div>
             </form>
           </Card>

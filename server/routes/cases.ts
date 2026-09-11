@@ -5,8 +5,20 @@ import { canAccessCase, requireRoles } from "../middleware/access";
 
 const router = Router();
 const present = (item: any) => ({ ...item, height: item.heightCm, weight: item.weightKg, fileCount: item._count?.files ?? 0, reportCount: item._count?.reports ?? 0, latestReportTime: item.reports?.[0]?.createdAt ?? null, latestReport: item.reports?.[0] ? { id: item.reports[0].id, cobbAngle: item.reports[0].cobbAngle, severity: item.reports[0].severity, reportStatus: item.reports[0].review?.status ?? item.reports[0].annotationStatus ?? null } : null });
-const institutionFor = (user: any, body: any) => user.role === "system_admin" && typeof body?.institutionId === "string" ? body.institutionId : user.institutionId;
 const computeStatus = (item: any, inFlight?: Set<string>) => { if (inFlight?.has(item.id)) return "analyzing"; const latest = Array.isArray(item.reports) ? item.reports[0] : undefined; if (latest) return latest.review?.status || "under_review"; if ((item._count?.files ?? 0) > 0) return "pending_analysis"; return "pending_upload"; };
+
+// 档案归属机构：请求显式指定 → 创建者本人所属机构 → 系统内唯一机构（系统管理员建档时自动归入）
+const resolveCaseInstitutionId = async (user: any, body: any): Promise<string> => {
+  const requested = typeof body?.institutionId === "string" ? body.institutionId : "";
+  if (requested) {
+    const found = await db.institution.findUnique({ where: { id: requested }, select: { id: true } });
+    if (found) return found.id;
+  }
+  if (user.institutionId) return user.institutionId;
+  const institutions = await db.institution.findMany({ select: { id: true }, orderBy: { createdAt: "asc" } });
+  if (institutions.length === 1) return institutions[0].id;
+  throw new Error(institutions.length === 0 ? "系统尚未创建机构，请先在「机构管理」中创建机构。" : "请选择档案所属机构。");
+};
 
 router.get("/", async (req: any, res) => {
   const page = Math.max(1, Number(req.query.page || 1)); const pageSize = Math.min(Math.max(1, Number(req.query.pageSize || 20)), 100);
@@ -24,7 +36,7 @@ router.get("/stats/summary", async (req: any, res) => { const rows = (await db.c
 router.get("/:id", async (req: any, res) => { const item = await db.case.findUnique({ where: { id: req.params.id }, include: { files: { orderBy: { createdAt: "desc" }, include: { tasks: { orderBy: { createdAt: "desc" }, take: 1 } } }, reports: { orderBy: { version: "desc" } } } }); if (!item || !canAccessCase(req.user, item)) return res.status(404).json({ success: false, message: "Case not found." }); return res.json({ success: true, data: present(item) }); });
 
 async function createCase(user: any, body: any) {
-  const institutionId = institutionFor(user, body); if (!institutionId) throw new Error("User institution is not configured.");
+  const institutionId = await resolveCaseInstitutionId(user, body);
   if (!body?.name || !body?.gender || !body?.birthDate || !body?.height || !body?.weight) throw new Error("姓名、性别、出生日期、身高和体重为必填项。");
   const existingNumbers = await db.case.findMany({ select: { caseNumber: true } });
   let maxNumber = 0;
