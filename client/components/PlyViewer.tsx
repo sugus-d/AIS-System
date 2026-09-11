@@ -5,6 +5,25 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 import api from "@/lib/api";
 
+// three.js 的 WebGL 只接受 Float32 属性数组；算法产出的 ROI PLY 是 double 精度，
+// 直接上传 GPU 会抛 "THREE.WebGLAttributes: Unsupported buffer data format" 并导致画面全黑，
+// 这里统一降为 Float32Array（索引转成 Uint32Array）。
+function normalizeGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  const toFloat32 = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+    if (attribute instanceof THREE.InterleavedBufferAttribute) return attribute;
+    if (attribute.array instanceof Float32Array) return attribute;
+    return new THREE.BufferAttribute(Float32Array.from(attribute.array as ArrayLike<number>), attribute.itemSize, attribute.normalized);
+  };
+  if (geometry.attributes.position) geometry.setAttribute("position", toFloat32(geometry.attributes.position));
+  if (geometry.attributes.normal) geometry.setAttribute("normal", toFloat32(geometry.attributes.normal));
+  if (geometry.attributes.color) geometry.setAttribute("color", toFloat32(geometry.attributes.color));
+  const index = geometry.index;
+  if (index && !(index.array instanceof Uint32Array) && !(index.array instanceof Uint16Array)) {
+    geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(index.array as ArrayLike<number>), 1));
+  }
+  return geometry;
+}
+
 // 受检者页面「扫描结果」3D 查看器：
 // 仿标注平台显示样式（暗色背景 + 灯光），仅查看/旋转/缩放/平移，无任何标注功能。
 // 加载中/失败都会给出明确提示，避免出现“一块空白”而无从判断。
@@ -77,21 +96,26 @@ export default function PlyViewer({
     ro.observe(container);
 
     let disposed = false;
-    let raf = 0;
-    const loop = () => {
-      if (disposed) return;
-      controls.update();
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
-    };
-    loop();
-
     let cancelled = false;
+    let raf = 0;
     const fail = (message: string) => {
       if (disposed) return;
       setState({ status: "error", message });
       onLoadError?.(message);
     };
+    const loop = () => {
+      if (disposed) return;
+      try {
+        controls.update();
+        renderer.render(scene, camera);
+      } catch (error) {
+        // 渲染期异常（如不支持的顶点数据格式）不要静默：停下来并提示原因
+        fail(error instanceof Error ? error.message : String(error));
+        return;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
 
     api
       .downloadMesh(fileId)
@@ -103,7 +127,7 @@ export default function PlyViewer({
         }
         let geometry: THREE.BufferGeometry;
         try {
-          geometry = new PLYLoader().parse(buffer);
+          geometry = normalizeGeometry(new PLYLoader().parse(buffer));
         } catch {
           fail(t("caseDetail.view3dInvalid"));
           return;
