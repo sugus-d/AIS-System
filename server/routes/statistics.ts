@@ -6,6 +6,10 @@ import { exportLabels, resolveExportLang, severityLabel } from "../services/expo
 const router = Router();
 const severity = [{ name: "Normal", color: "#22c55e" }, { name: "Mild", color: "#eab308" }, { name: "Moderate", color: "#f97316" }, { name: "Severe", color: "#ef4444" }];
 
+// 性别判定：female 含 "male" 子串，不能直接用 /male/ 判断男性
+const isFemale = (gender: unknown) => /female|女/i.test(String(gender || ""));
+const isMale = (gender: unknown) => !isFemale(gender) && /male|男/i.test(String(gender || ""));
+
 // 可见病例（含报告/任务/文件身份），供统计使用
 async function scoped(user: any) {
   const cases = await db.case.findMany({
@@ -118,7 +122,8 @@ router.get("/overview", async (req: any, res) => {
   res.json({
     success: true,
     data: {
-      cases: { total: caseTotal, male: baseCases.filter((item) => /male|男/i.test(item.gender)).length, female: baseCases.filter((item) => /female|女/i.test(item.gender)).length },
+      // 性别口径：female 同时匹配 /male/i，必须先判女性再判男性，否则男性数会等于全部档案
+      cases: { total: caseTotal, male: baseCases.filter((item) => isMale(item.gender)).length, female: baseCases.filter((item) => isFemale(item.gender)).length },
       caseStatus: { total: baseCases.length, analyzed: analyzedCases, analyzing: analyzingCases, pending: pendingCases, waiting: analyzingCases + pendingCases, insufficient: insufficientCases },
       files: { total: baseCases.reduce((total, item) => total + item.files.length, 0) },
       reports: { total: reports.length, completed: reports.filter((report) => report.annotationStatus === "approved").length, success: reportSuccess, pendingReview, successRate: reports.length ? (reportSuccess * 100 / reports.length).toFixed(1) : "0" },
