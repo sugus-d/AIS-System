@@ -32,7 +32,25 @@ router.get("/", async (req: any, res) => {
   if (typeof req.query.status === "string" && req.query.status && req.query.status !== "all") list = list.filter((item) => computeStatus(item, inFlight) === req.query.status);
   res.json({ success: true, data: { list: list.slice((page - 1) * pageSize, page * pageSize).map((item) => ({ ...present(item), status: computeStatus(item, inFlight) })), total: list.length, page, pageSize } });
 });
-router.get("/stats/summary", async (req: any, res) => { const rows = (await db.case.findMany({ include: { files: true, reports: true } })).filter((item) => canAccessCase(req.user, item)); res.json({ success: true, data: { total: rows.length, files: rows.reduce((n, item) => n + item.files.length, 0), reports: rows.reduce((n, item) => n + item.reports.length, 0) } }); });
+// 工作台概览：口径与受检者列表一致 —— 待上传 = 还没有扫描(.ply)文件；待分析 = 有扫描文件但还没出报告；已完成分析 = 已有报告
+router.get("/stats/summary", async (req: any, res) => {
+  const rows = await db.case.findMany({
+    include: {
+      _count: { select: { files: true, reports: true } },
+      files: { select: { originalName: true } },
+      reports: { select: { id: true }, take: 1 },
+    },
+  });
+  const visible = rows.filter((item) => canAccessCase(req.user, item));
+  let pendingUpload = 0; let pendingAnalysis = 0; let completed = 0;
+  for (const item of visible) {
+    const hasScan = item.files.some((file) => String(file.originalName || "").toLowerCase().endsWith(".ply"));
+    if (!hasScan) pendingUpload += 1;
+    else if (item.reports.length > 0) completed += 1;
+    else pendingAnalysis += 1;
+  }
+  res.json({ success: true, data: { total: visible.length, files: visible.reduce((n, item) => n + item._count.files, 0), reports: visible.reduce((n, item) => n + item._count.reports, 0), pendingUpload, pendingAnalysis, completed } });
+});
 router.get("/:id", async (req: any, res) => { const item = await db.case.findUnique({ where: { id: req.params.id }, include: { files: { orderBy: { createdAt: "desc" }, include: { tasks: { orderBy: { createdAt: "desc" }, take: 1 } } }, reports: { orderBy: { version: "desc" } } } }); if (!item || !canAccessCase(req.user, item)) return res.status(404).json({ success: false, message: "Case not found." }); return res.json({ success: true, data: present(item) }); });
 
 async function createCase(user: any, body: any) {
