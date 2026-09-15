@@ -298,7 +298,8 @@ export default function StatisticsPage() {
                   </div>
                 </Card>
 
-                {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1） */}
+                {/* 医生分析统计：每个医生做了多少患者的报告（患者有该医生的报告即记 1）
+                    医生数量不固定：用横向条形图，每位医生独占一行、姓名放纵轴，窄卡片内也不会重叠 */}
                 <Card className="border-border/80 p-5 md:p-6">
                   <div className="mb-5">
                     <h2 className="text-lg font-semibold text-foreground">{t("stats.doctorTitle")}</h2>
@@ -308,21 +309,27 @@ export default function StatisticsPage() {
                     <p className="py-8 text-center text-sm text-muted-foreground">{t("stats.noData")}</p>
                   ) : (
                     <div
-                      className="w-full"
-                      style={{ height: Math.min(420, Math.max(300, doctorData.length * 52)) }}
+                      className="w-full overflow-y-auto pr-1"
+                      style={{ maxHeight: 560 }}
                       aria-label={t("stats.chartDoctorLabel")}
                     >
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={[...doctorData].sort((a, b) => b.patientCount - a.patientCount)} margin={{ top: 28, right: 12, left: -14, bottom: 0 }}>
-                          <CartesianGrid vertical={false} stroke="#DBEAFE" />
-                          <XAxis dataKey="name" tickLine={false} axisLine={false} interval={0} tick={{ fontSize: 12 }} />
-                          <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={44} />
-                          <Tooltip cursor={{ fill: "rgba(148, 163, 184, 0.14)" }} content={<DoctorBarTooltip />} />
-                          <Bar dataKey="patientCount" fill="#1E40AF" radius={[6, 6, 0, 0]} maxBarSize={56}>
-                            <LabelList dataKey="patientCount" position="top" style={{ fill: "#1E40AF", fontSize: 13, fontWeight: 600 }} />
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <div style={{ height: Math.max(240, doctorData.length * 30 + 40) }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            layout="vertical"
+                            data={[...doctorData].sort((a, b) => b.patientCount - a.patientCount)}
+                            margin={{ top: 4, right: 44, left: 4, bottom: 0 }}
+                          >
+                            <CartesianGrid horizontal={false} stroke="#DBEAFE" />
+                            <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                            <YAxis type="category" dataKey="name" width={76} interval={0} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                            <Tooltip cursor={{ fill: "rgba(148, 163, 184, 0.14)" }} content={<DoctorBarTooltip />} />
+                            <Bar dataKey="patientCount" fill="#1E40AF" radius={[0, 6, 6, 0]} maxBarSize={20}>
+                              <LabelList dataKey="patientCount" position="right" style={{ fill: "#1E40AF", fontSize: 12, fontWeight: 600 }} />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   )}
                 </Card>
