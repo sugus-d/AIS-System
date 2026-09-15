@@ -19,6 +19,8 @@ async function scoped(user: any) {
         include: {
           task: true,
           file: { select: { doctor: true, department: true } },
+          // 待审核指标依赖 review.status，必须一并查出，否则会退化为「待审核 = 报告总数」
+          review: true,
         },
       },
       owner: true,
